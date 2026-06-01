@@ -5,8 +5,8 @@ import { generatePack, QuizOrder, TranslationLanguage, uploadFile } from '../ser
 import { copy, UiLanguage } from '../i18n';
 
 const acceptedTypes = '.pdf,.docx,.pptx,.txt';
-const translationLanguages: { label: string; value: TranslationLanguage }[] = [
-  { label: 'No translation', value: 'none' },
+const translationLanguages: { label?: string; value: TranslationLanguage }[] = [
+  { value: 'none' },
   { label: 'English', value: 'english' },
   { label: '中文', value: 'chinese' },
   { label: 'Français', value: 'french' },
@@ -19,6 +19,7 @@ export default function UploadBox({ uiLanguage = 'english' }: { uiLanguage?: UiL
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [quizCount, setQuizCount] = useState(10);
   const [keyTermsCount, setKeyTermsCount] = useState(10);
   const [quizOrder, setQuizOrder] = useState<QuizOrder>('ranked');
   const [translationLanguage, setTranslationLanguage] = useState<TranslationLanguage>('none');
@@ -26,6 +27,7 @@ export default function UploadBox({ uiLanguage = 'english' }: { uiLanguage?: UiL
   const navigate = useNavigate();
 
   const generationOptions = {
+    quiz_count: quizCount,
     key_terms_count: keyTermsCount,
     quiz_order: quizOrder,
     language: 'auto' as const,
@@ -113,7 +115,17 @@ export default function UploadBox({ uiLanguage = 'english' }: { uiLanguage?: UiL
           <span>{t.settingsHint}</span>
         </div>
         <label className="field">
-          <span>{t.keyTerms}</span>
+          <span>{t.quizCount}</span>
+          <input
+            max={30}
+            min={3}
+            type="number"
+            value={quizCount}
+            onChange={(event) => setQuizCount(Number(event.target.value))}
+          />
+        </label>
+        <label className="field">
+          <span>{t.keyTermsCount}</span>
           <input
             max={30}
             min={3}
@@ -149,7 +161,7 @@ export default function UploadBox({ uiLanguage = 'english' }: { uiLanguage?: UiL
           >
             {translationLanguages.map((item) => (
               <option key={item.value} value={item.value}>
-                {item.label}
+                {item.value === 'none' ? t.noTranslation : item.label}
               </option>
             ))}
           </select>

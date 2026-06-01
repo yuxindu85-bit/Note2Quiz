@@ -4,6 +4,7 @@ export type QuizItem = {
   question: string;
   choices: string[];
   answer: string;
+  explanation?: string;
 };
 
 export type Flashcard = {
@@ -28,6 +29,7 @@ export type StudyPack = {
   translation_text: string;
   language: string;
   translation_language: string;
+  quiz_count: number;
   key_terms_count: number;
   quiz_order: string;
   created_at: string;
@@ -38,6 +40,7 @@ export type TranslationLanguage = 'none' | 'english' | 'chinese' | 'french' | 'r
 export type QuizOrder = 'ranked' | 'random';
 
 export type GenerateOptions = {
+  quiz_count?: number;
   key_terms_count?: number;
   quiz_order?: QuizOrder;
   language?: StudyLanguage;

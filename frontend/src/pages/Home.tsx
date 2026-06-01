@@ -34,23 +34,23 @@ export default function Home({ uiLanguage }: { uiLanguage: UiLanguage }) {
       <section className="dashboard-grid">
         <article className="metric-card">
           <BrainCircuit size={22} />
-          <h2>AI-ready</h2>
-          <p>Use OpenAI-compatible providers or run the realistic mock generator for free.</p>
+          <h2>{t.aiReady}</h2>
+          <p>{t.aiReadyText}</p>
         </article>
         <article className="metric-card">
           <FileText size={22} />
-          <h2>Structured outputs</h2>
-          <p>Get a summary, 10 quiz questions, 20 flashcards, and key terms.</p>
+          <h2>{t.structuredOutputs}</h2>
+          <p>{t.structuredOutputsText}</p>
         </article>
         <article className="metric-card">
           <Library size={22} />
-          <h2>Saved history</h2>
-          <p>SQLite stores generated packs so students can return to them later.</p>
+          <h2>{t.savedHistory}</h2>
+          <p>{t.savedHistoryText}</p>
         </article>
         <article className="metric-card">
           <ShieldCheck size={22} />
-          <h2>Local-first</h2>
-          <p>Uploads and generated packs stay on the developer's machine by default.</p>
+          <h2>{t.localFirst}</h2>
+          <p>{t.localFirstText}</p>
         </article>
       </section>
     </div>

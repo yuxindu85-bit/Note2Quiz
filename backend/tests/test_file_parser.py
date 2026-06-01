@@ -56,6 +56,7 @@ def test_mock_study_pack_honors_generation_options() -> None:
     pack = mock_study_pack(
         "economics.txt",
         text,
+        quiz_count=7,
         key_terms_count=5,
         quiz_order="random",
         language="english",
@@ -63,9 +64,12 @@ def test_mock_study_pack_honors_generation_options() -> None:
         include_translation=True,
     )
 
+    assert pack["quiz_count"] == 7
     assert pack["key_terms_count"] == 5
     assert pack["quiz_order"] == "random"
     assert pack["language"] == "english"
     assert pack["translation_language"] == "spanish"
+    assert len(pack["quiz"]) == 7
     assert len(pack["key_terms"]) == 5
-    assert "Demo translation preview" in pack["translation_text"]
+    assert pack["quiz"][0]["explanation"]
+    assert "Demo mode cannot produce" in pack["translation_text"]

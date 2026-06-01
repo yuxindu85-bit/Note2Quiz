@@ -64,13 +64,13 @@ function App() {
               ))}
             </select>
           </label>
-          <ApiStatus />
+          <ApiStatus uiLanguage={uiLanguage} />
         </header>
         <main>
           <Routes>
             <Route path="/" element={<Home uiLanguage={uiLanguage} />} />
             <Route path="/upload" element={<Upload uiLanguage={uiLanguage} />} />
-            <Route path="/packs/:packId" element={<Result />} />
+            <Route path="/packs/:packId" element={<Result uiLanguage={uiLanguage} />} />
             <Route path="/packs/:packId/exam" element={<Exam />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/exam-history" element={<ExamHistory />} />

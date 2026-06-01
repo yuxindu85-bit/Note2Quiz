@@ -138,6 +138,7 @@ async def generate_pack(
         generated = await generate_study_pack(
             file_row["extracted_text"],
             file_row["original_filename"],
+            quiz_count=options.quiz_count,
             key_terms_count=options.key_terms_count,
             quiz_order=options.quiz_order,
             language=options.language,
@@ -158,9 +159,9 @@ async def generate_pack(
             INSERT INTO study_packs
             (
                 id, file_id, title, summary, quiz_json, flashcards_json, key_terms_json,
-                original_text, translation_text, language, translation_language, key_terms_count, quiz_order
+                original_text, translation_text, language, translation_language, quiz_count, key_terms_count, quiz_order
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 pack_id,
@@ -174,6 +175,7 @@ async def generate_pack(
                 generated["translation_text"],
                 generated["language"],
                 generated["translation_language"],
+                generated["quiz_count"],
                 generated["key_terms_count"],
                 generated["quiz_order"],
             ),

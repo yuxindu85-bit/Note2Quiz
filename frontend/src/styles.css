@@ -136,10 +136,10 @@ main {
 }
 
 .hero-grid {
-  align-items: center;
+  align-items: start;
   display: grid;
-  gap: 34px;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 430px);
+  gap: clamp(28px, 5vw, 56px);
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
 }
 
 .intro h1,
@@ -152,8 +152,8 @@ main {
 }
 
 .intro h1 {
-  font-size: clamp(2.35rem, 6vw, 4.8rem);
-  max-width: 760px;
+  font-size: clamp(2.35rem, 5.4vw, 4.4rem);
+  max-width: 680px;
 }
 
 .intro p,
@@ -203,7 +203,7 @@ main {
 .dashboard-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .metric-card {
@@ -301,7 +301,7 @@ main {
   border-radius: 8px;
   display: grid;
   gap: 14px;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 16px;
 }
 
@@ -650,6 +650,15 @@ main {
   color: #246b6f;
   font-weight: 800;
   margin-bottom: 0;
+}
+
+.explanation {
+  background: #f8fafc;
+  border-left: 3px solid #8bb8bb;
+  color: #526173;
+  line-height: 1.65;
+  margin: 12px 0 0;
+  padding: 10px 12px;
 }
 
 .term-row {

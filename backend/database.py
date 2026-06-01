@@ -60,6 +60,7 @@ def init_db() -> None:
                 translation_text TEXT NOT NULL DEFAULT '',
                 language TEXT NOT NULL DEFAULT 'english',
                 translation_language TEXT NOT NULL DEFAULT 'none',
+                quiz_count INTEGER NOT NULL DEFAULT 10,
                 key_terms_count INTEGER NOT NULL DEFAULT 10,
                 quiz_order TEXT NOT NULL DEFAULT 'ranked',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -94,6 +95,7 @@ def init_db() -> None:
         _add_column_if_missing(conn, "study_packs", "translation_text", "TEXT NOT NULL DEFAULT ''")
         _add_column_if_missing(conn, "study_packs", "language", "TEXT NOT NULL DEFAULT 'english'")
         _add_column_if_missing(conn, "study_packs", "translation_language", "TEXT NOT NULL DEFAULT 'none'")
+        _add_column_if_missing(conn, "study_packs", "quiz_count", "INTEGER NOT NULL DEFAULT 10")
         _add_column_if_missing(conn, "study_packs", "key_terms_count", "INTEGER NOT NULL DEFAULT 10")
         _add_column_if_missing(conn, "study_packs", "quiz_order", "TEXT NOT NULL DEFAULT 'ranked'")
         conn.execute(
@@ -174,6 +176,7 @@ def row_to_pack(row: sqlite3.Row) -> dict[str, Any]:
         "translation_text": row["translation_text"],
         "language": row["language"],
         "translation_language": row["translation_language"],
+        "quiz_count": row["quiz_count"],
         "key_terms_count": row["key_terms_count"],
         "quiz_order": row["quiz_order"],
         "created_at": row["created_at"],

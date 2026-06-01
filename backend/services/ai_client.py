@@ -22,11 +22,13 @@ LANGUAGE_LABELS = {
 async def generate_study_pack(
     text: str,
     title: str,
+    quiz_count: int = 10,
     key_terms_count: int = 10,
     quiz_order: str = "ranked",
     language: str = "english",
     translation_language: str = "none",
 ) -> dict[str, Any]:
+    quiz_count = max(3, min(quiz_count, 30))
     key_terms_count = max(3, min(key_terms_count, 30))
     quiz_order = quiz_order if quiz_order in {"ranked", "random"} else "ranked"
     requested_language = language if language in LANGUAGE_LABELS else "auto"
@@ -38,6 +40,7 @@ async def generate_study_pack(
         return mock_study_pack(
             title,
             text,
+            quiz_count,
             key_terms_count,
             quiz_order,
             language,
@@ -51,6 +54,7 @@ async def generate_study_pack(
         title,
         text[:MAX_PROMPT_CHARS],
         key_terms_count,
+        quiz_count,
         quiz_order,
         language,
         translation_language=translation_language,
@@ -85,6 +89,7 @@ async def generate_study_pack(
         title,
         text,
         key_terms_count,
+        quiz_count,
         quiz_order,
         language,
         translation_language=translation_language,
@@ -96,6 +101,7 @@ def _build_prompt(
     title: str,
     text: str,
     key_terms_count: int,
+    quiz_count: int,
     quiz_order: str,
     language: str,
     translation_language: str,
@@ -114,7 +120,7 @@ Create a study pack for this lecture file: {title}
 Return JSON with exactly these keys:
 - title: string
 - summary: concise but useful study summary in {language_label}
-- quiz: array of 10 objects with question, choices array of 4 strings, answer string
+- quiz: array of exactly {quiz_count} objects with question, choices array of 4 strings, answer string, explanation string
 - flashcards: array of 20 objects with front and back
 - key_terms: array of exactly {key_terms_count} objects with term and short definition, ordered by importance
 - translation_text: {"translated version of the lecture text in " + translation_label if include_translation else "empty string"}
@@ -134,6 +140,7 @@ def normalize_pack(
     fallback_title: str,
     original_text: str,
     key_terms_count: int,
+    quiz_count: int,
     quiz_order: str,
     language: str,
     translation_language: str,
@@ -142,6 +149,7 @@ def normalize_pack(
     fallback = mock_study_pack(
         fallback_title,
         original_text,
+        quiz_count,
         key_terms_count,
         quiz_order,
         language,
@@ -151,13 +159,14 @@ def normalize_pack(
     return {
         "title": str(data.get("title") or fallback_title),
         "summary": str(data.get("summary") or "No summary was generated."),
-        "quiz": _with_fallback(_list_of_dicts(data.get("quiz"), 10), fallback["quiz"], 10),
+        "quiz": _with_fallback(_list_of_dicts(data.get("quiz"), quiz_count), fallback["quiz"], quiz_count),
         "flashcards": _with_fallback(_list_of_dicts(data.get("flashcards"), 20), fallback["flashcards"], 20),
         "key_terms": _with_fallback(_list_of_dicts(data.get("key_terms"), key_terms_count), fallback["key_terms"], key_terms_count),
         "original_text": original_text,
         "translation_text": str(data.get("translation_text") or fallback["translation_text"]) if include_translation else "",
         "language": language,
         "translation_language": translation_language,
+        "quiz_count": quiz_count,
         "key_terms_count": key_terms_count,
         "quiz_order": quiz_order,
     }
@@ -196,6 +205,7 @@ def _with_fallback(
 def mock_study_pack(
     title: str,
     text: str,
+    quiz_count: int = 10,
     key_terms_count: int = 10,
     quiz_order: str = "ranked",
     language: str = "english",
@@ -207,7 +217,7 @@ def mock_study_pack(
     primary_terms = keywords[: max(key_terms_count, 12)] or ["lecture", "concept", "review", "example"]
     summary_topic = ", ".join(term.title() for term in primary_terms[:4]) or "core course concepts"
 
-    quiz = _mock_quiz(title, sentences, primary_terms, quiz_order)
+    quiz = _mock_quiz(title, sentences, primary_terms, quiz_count, quiz_order)
     flashcards = _mock_flashcards(sentences, primary_terms)
     key_terms = [
         {
@@ -232,6 +242,7 @@ def mock_study_pack(
         "translation_text": _mock_translation(text, translation_language) if include_translation else "",
         "language": language,
         "translation_language": translation_language,
+        "quiz_count": quiz_count,
         "key_terms_count": key_terms_count,
         "quiz_order": quiz_order,
     }
@@ -299,6 +310,7 @@ def _mock_quiz(
     title: str,
     sentences: list[str],
     keywords: list[str],
+    quiz_count: int = 10,
     quiz_order: str = "ranked",
 ) -> list[dict[str, Any]]:
     question_stems = [
@@ -315,7 +327,7 @@ def _mock_quiz(
     ]
     fact_pool = _fact_pool(sentences)
     quiz: list[dict[str, Any]] = []
-    for index in range(10):
+    for index in range(quiz_count):
         term = keywords[index % len(keywords)].title()
         answer = fact_pool[index % len(fact_pool)]
         choices = [answer]
@@ -329,9 +341,10 @@ def _mock_quiz(
                 choices.append(_generic_distractor(len(choices)))
         quiz.append(
             {
-                "question": question_stems[index].format(term=term, title=title),
+                "question": question_stems[index % len(question_stems)].format(term=term, title=title),
                 "choices": choices[:4],
                 "answer": answer,
+                "explanation": f"This answer is correct because the uploaded notes explicitly support this point: {answer}",
             }
         )
     if quiz_order == "random":
@@ -408,12 +421,10 @@ def _mock_translation(text: str, language: str) -> str:
     if language == "english":
         return clean
 
-    preview = clean[:3500]
-    translated = _dictionary_translate(preview, language)
     label = LANGUAGE_LABELS.get(language, language.title())
     return (
-        f"Demo translation preview ({label}). Configure AI_API_KEY for a full high-quality translation.\n\n"
-        f"{translated}"
+        f"Demo mode cannot produce a reliable full-article {label} translation without AI_API_KEY. "
+        "The original text is shown above. Add an OpenAI-compatible API key to generate an accurate translation here."
     )
 
 

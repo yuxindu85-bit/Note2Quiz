@@ -73,21 +73,31 @@ def test_generate_accepts_study_options(tmp_path: Path, monkeypatch) -> None:
 
     response = client.post(
         f"/api/generate/{file_id}",
-        json={"key_terms_count": 5, "quiz_order": "random", "language": "auto", "translation_language": "chinese"},
+        json={
+            "quiz_count": 7,
+            "key_terms_count": 5,
+            "quiz_order": "random",
+            "language": "auto",
+            "translation_language": "chinese",
+        },
     )
 
     assert response.status_code == 200
     pack = response.json()
+    assert pack["quiz_count"] == 7
     assert pack["key_terms_count"] == 5
     assert pack["quiz_order"] == "random"
     assert pack["language"] == "english"
     assert pack["translation_language"] == "chinese"
+    assert len(pack["quiz"]) == 7
     assert len(pack["key_terms"]) == 5
-    assert "Demo translation preview" in pack["translation_text"]
+    assert pack["quiz"][0]["explanation"]
+    assert "Demo mode cannot produce" in pack["translation_text"]
 
     export_response = client.get(f"/api/export/{pack['id']}")
     assert export_response.status_code == 200
     assert "## Translation (Chinese)" in export_response.text
+    assert "Explanation:" in export_response.text
 
 
 def test_exam_wrong_answers_and_study_plan(tmp_path: Path, monkeypatch) -> None:

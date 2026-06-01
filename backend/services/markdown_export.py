@@ -23,6 +23,8 @@ def pack_to_markdown(pack: dict[str, Any]) -> str:
         for choice in item.get("choices", []):
             lines.append(f"   - {choice}")
         lines.append(f"   - Answer: {item.get('answer', '')}")
+        if item.get("explanation"):
+            lines.append(f"   - Explanation: {item.get('explanation', '')}")
         lines.append("")
 
     lines.extend(["## Flashcards", ""])

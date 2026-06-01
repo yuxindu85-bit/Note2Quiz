@@ -16,7 +16,7 @@
 
 ## Product
 
-Note2Quiz is a local-first AI study system for students. Upload a PDF, DOCX, PPTX, or TXT lecture file and the app extracts readable text, generates a concise study summary, creates a 10-question multiple-choice quiz, builds 20 flashcards, defines configurable key terms, translates source text, creates study plans, runs exam practice, saves wrong answers, stores everything in SQLite, and exports the result as Markdown.
+Note2Quiz is a local-first AI study system for students. Upload a PDF, DOCX, PPTX, or TXT lecture file and the app extracts readable text, generates a concise study summary, creates configurable multiple-choice quizzes with explanations, builds 20 flashcards, defines configurable key terms, translates source text when an AI provider is configured, creates study plans, runs exam practice, saves wrong answers, stores everything in SQLite, and exports the result as Markdown.
 
 The project supports OpenAI-compatible APIs, but it does not require a paid AI account. If `AI_API_KEY` is missing, Note2Quiz automatically switches into demo mode with realistic mock study material.
 
@@ -25,6 +25,8 @@ The project supports OpenAI-compatible APIs, but it does not require a paid AI a
 - Upload PDF, DOCX, PPTX, and TXT files
 - Extract text with PyMuPDF, python-docx, python-pptx, or a built-in TXT parser
 - Generate summaries, quizzes, flashcards, and key terms
+- Choose how many quiz questions to generate
+- Include explanations for quiz answers
 - Choose how many key terms to generate, ordered from most important downward
 - Generate quizzes in importance order or randomized order
 - Generate study material in English, Chinese, French, Russian, or Spanish
@@ -150,16 +152,16 @@ If `AI_API_KEY` is not set, the backend automatically uses a local mock generato
 1. Upload a file
 2. Extract text
 3. Generate a realistic summary
-4. Create 10 quiz questions
+4. Create the requested number of quiz questions
 5. Create 20 flashcards
 6. Create the requested number of key terms
 7. Generate study plans
 8. Run an exam and save wrong answers
-9. Add a demo translation preview when a non-English language is selected
+9. Show a clear translation placeholder when no AI key is configured
 10. Save the pack in SQLite
 11. Export Markdown
 
-Demo translations use a lightweight local preview so the app remains free to try. Configure an OpenAI-compatible provider for full-quality translation and multilingual generation.
+Demo mode does not pretend to perform full article translation. Configure an OpenAI-compatible provider for full-quality translation and multilingual generation.
 
 This makes the project easy to evaluate without spending money.
 

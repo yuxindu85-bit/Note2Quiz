@@ -12,8 +12,9 @@ import {
   StudyPlan,
   TranslationLanguage
 } from '../services/api';
+import { copy, UiLanguage } from '../i18n';
 
-const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Study Plan', 'Original Text'] as const;
+const tabs = ['summary', 'quiz', 'flashcards', 'keyTerms', 'studyPlan', 'originalText'] as const;
 type Tab = (typeof tabs)[number];
 const languageLabels: Record<string, string> = {
   english: 'English',
@@ -24,10 +25,11 @@ const languageLabels: Record<string, string> = {
   none: 'No translation'
 };
 
-export default function Result() {
+export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLanguage }) {
+  const t = copy[uiLanguage];
   const { packId } = useParams();
   const [pack, setPack] = useState<StudyPack | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('Summary');
+  const [activeTab, setActiveTab] = useState<Tab>('summary');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
@@ -57,7 +59,7 @@ export default function Result() {
         translation_language: pack.translation_language as TranslationLanguage
       });
       setPack(regenerated);
-      setActiveTab('Summary');
+      setActiveTab('summary');
       navigate(`/packs/${regenerated.id}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not regenerate this pack.');
@@ -82,10 +84,10 @@ export default function Result() {
 
   const content = useMemo(() => {
     if (!pack) return null;
-    if (activeTab === 'Summary') {
+    if (activeTab === 'summary') {
       return <p className="summary-text">{pack.summary}</p>;
     }
-    if (activeTab === 'Quiz') {
+    if (activeTab === 'quiz') {
       if (pack.quiz.length === 0) {
         return <EmptyPanel message="No quiz questions were generated for this pack." />;
       }
@@ -99,13 +101,14 @@ export default function Result() {
                   <li key={choice}>{choice}</li>
                 ))}
               </ul>
-              <p className="answer">Answer: {item.answer}</p>
+              <p className="answer">{t.answer}: {item.answer}</p>
+              {item.explanation && <p className="explanation">{t.explanation}: {item.explanation}</p>}
             </article>
           ))}
         </div>
       );
     }
-    if (activeTab === 'Flashcards') {
+    if (activeTab === 'flashcards') {
       if (pack.flashcards.length === 0) {
         return <EmptyPanel message="No flashcards were generated for this pack." />;
       }
@@ -120,7 +123,7 @@ export default function Result() {
         </div>
       );
     }
-    if (activeTab === 'Key Terms') {
+    if (activeTab === 'keyTerms') {
       if (pack.key_terms.length === 0) {
         return <EmptyPanel message="No key terms were generated for this pack." />;
       }
@@ -135,7 +138,7 @@ export default function Result() {
         </div>
       );
     }
-    if (activeTab === 'Study Plan') {
+    if (activeTab === 'studyPlan') {
       return (
         <div className="stack">
           <div className="plan-toolbar">
@@ -176,18 +179,18 @@ export default function Result() {
     return (
       <div className="source-stack">
         <section>
-          <h2>Original text</h2>
+          <h2>{t.originalText}</h2>
           <pre className="original-text">{pack.original_text || 'No original text was stored.'}</pre>
         </section>
         {pack.translation_text && (
           <section className="translation-panel">
-            <h2>Translation · {languageLabels[pack.translation_language] ?? pack.translation_language}</h2>
+            <h2>{t.translation} · {languageLabels[pack.translation_language] ?? pack.translation_language}</h2>
             <pre className="original-text">{pack.translation_text}</pre>
           </section>
         )}
       </div>
     );
-  }, [activeTab, pack, planDays, planLoading, studyPlan]);
+  }, [activeTab, pack, planDays, planLoading, studyPlan, t]);
 
   if (loading) {
     return (
@@ -212,31 +215,32 @@ export default function Result() {
     <section className="result-page">
       <div className="result-header">
         <div>
-          <p className="eyebrow">Study pack</p>
+          <p className="eyebrow">{t.studyPack}</p>
           <h1>{pack.title}</h1>
           <p className="subtle-line">
-            Generated {new Date(pack.created_at).toLocaleString()} with {pack.quiz.length} quiz
-            questions and {pack.flashcards.length} flashcards.
+            {new Date(pack.created_at).toLocaleString()} ·{' '}
+            {t.generatedWith.replace('{quiz}', String(pack.quiz.length)).replace('{flashcards}', String(pack.flashcards.length))}
           </p>
           <div className="metadata-row">
-            <span>{pack.key_terms.length} key terms</span>
-            <span>{pack.quiz_order === 'random' ? 'Random quiz order' : 'Most important first'}</span>
-            <span>Analysis: {languageLabels[pack.language] ?? pack.language}</span>
-            <span>Translation: {languageLabels[pack.translation_language] ?? pack.translation_language}</span>
+            <span>{pack.key_terms.length} {t.keyTerms}</span>
+            <span>{pack.quiz.length} {t.quiz}</span>
+            <span>{pack.quiz_order === 'random' ? t.random : t.ranked}</span>
+            <span>{t.analysis}: {languageLabels[pack.language] ?? pack.language}</span>
+            <span>{t.translation}: {languageLabels[pack.translation_language] ?? pack.translation_language}</span>
           </div>
         </div>
         <div className="result-actions">
           <Link className="primary-button" to={`/packs/${pack.id}/exam`}>
             <Target size={18} />
-            Start Exam
+            {t.startExam}
           </Link>
           <button className="secondary-button" type="button" disabled={regenerating} onClick={handleRegenerate}>
             {regenerating ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
-            {regenerating ? 'Regenerating...' : 'Regenerate'}
+            {regenerating ? `${t.regenerate}...` : t.regenerate}
           </button>
           <a className="secondary-button" href={exportUrl(pack.id)}>
             <Download size={18} />
-            Export Markdown
+            {t.exportMarkdown}
           </a>
         </div>
       </div>
@@ -249,7 +253,7 @@ export default function Result() {
             type="button"
             onClick={() => setActiveTab(tab)}
           >
-            {tab}
+            {t[tab]}
           </button>
         ))}
       </div>
