@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from collections import Counter
 from typing import Any
 
 import httpx
@@ -103,37 +104,19 @@ def _with_fallback(
 
 
 def mock_study_pack(title: str, text: str) -> dict[str, Any]:
-    words = [word.strip(".,:;()[]").lower() for word in text.split()]
-    candidates = []
-    for word in words:
-        if len(word) > 5 and word.isalpha() and word not in candidates:
-            candidates.append(word)
-        if len(candidates) >= 10:
-            break
+    sentences = _extract_sentences(text)
+    keywords = _extract_keywords(text)
+    primary_terms = keywords[:12] or ["lecture", "concept", "review", "example"]
+    summary_topic = ", ".join(term.title() for term in primary_terms[:4]) or "core course concepts"
 
-    theme = candidates[0].title() if candidates else "Lecture"
-    summary_topic = ", ".join(candidate.title() for candidate in candidates[:4]) or "core course concepts"
-    quiz = [
-        {
-            "question": f"Which study focus is most relevant to {title}?",
-            "choices": [theme, "Citation formatting", "Page numbering", "Slide animation timing"],
-            "answer": theme,
-        }
-        for index in range(1, 11)
-    ]
-    flashcards = [
-        {
-            "front": f"{theme} concept {index}",
-            "back": "Review the uploaded lecture text and connect this concept to the summary.",
-        }
-        for index in range(1, 21)
-    ]
+    quiz = _mock_quiz(title, sentences, primary_terms)
+    flashcards = _mock_flashcards(sentences, primary_terms)
     key_terms = [
         {
             "term": candidate.title(),
-            "definition": f"A recurring term detected in the uploaded notes for {title}.",
+            "definition": _definition_for_term(candidate, sentences, title),
         }
-        for candidate in (candidates[:8] or ["lecture", "summary", "review"])
+        for candidate in primary_terms[:10]
     ]
 
     return {
@@ -147,3 +130,108 @@ def mock_study_pack(title: str, text: str) -> dict[str, Any]:
         "key_terms": key_terms,
         "original_text": text,
     }
+
+
+def _extract_sentences(text: str) -> list[str]:
+    chunks = re.split(r"(?<=[.!?])\s+|\n+", text)
+    sentences = [chunk.strip(" -\t\r\n") for chunk in chunks if len(chunk.strip()) >= 24]
+    if sentences:
+        return sentences[:12]
+    compact = " ".join(text.split())
+    return [compact[:220]] if compact else ["Review the uploaded material and identify the main ideas."]
+
+
+def _extract_keywords(text: str) -> list[str]:
+    stopwords = {
+        "about",
+        "after",
+        "also",
+        "because",
+        "between",
+        "could",
+        "during",
+        "every",
+        "first",
+        "from",
+        "have",
+        "into",
+        "more",
+        "other",
+        "should",
+        "study",
+        "their",
+        "there",
+        "these",
+        "this",
+        "through",
+        "while",
+        "with",
+        "would",
+    }
+    words = re.findall(r"[A-Za-z][A-Za-z-]{4,}", text.lower())
+    counts = Counter(word for word in words if word not in stopwords)
+    return [word for word, _count in counts.most_common(24)]
+
+
+def _mock_quiz(title: str, sentences: list[str], keywords: list[str]) -> list[dict[str, Any]]:
+    templates = [
+        "Which concept is most central to this note?",
+        "Which term should a student define first?",
+        "What topic is most likely to appear on a review quiz?",
+        "Which idea best matches the uploaded lecture?",
+        "Which item belongs in the key terms list?",
+        "What should be connected to the summary?",
+        "Which phrase is directly supported by the source text?",
+        "Which concept deserves a flashcard?",
+        "What is a useful exam focus from this material?",
+        f"What is the strongest study signal in {title}?",
+    ]
+    distractors = [
+        "page margins",
+        "slide transitions",
+        "file naming",
+        "citation style",
+        "attendance policy",
+        "font selection",
+        "printing settings",
+        "desktop shortcuts",
+        "folder sorting",
+        "keyboard layout",
+    ]
+    quiz: list[dict[str, Any]] = []
+    for index in range(10):
+        answer = keywords[index % len(keywords)].title()
+        sentence = sentences[index % len(sentences)]
+        choices = [answer]
+        while len(choices) < 4:
+            distractor = distractors[(index + len(choices) - 1) % len(distractors)]
+            choices.append(distractor.title())
+        quiz.append(
+            {
+                "question": f"{templates[index]} Context: {sentence[:110]}",
+                "choices": choices[:4],
+                "answer": answer,
+            }
+        )
+    return quiz
+
+
+def _mock_flashcards(sentences: list[str], keywords: list[str]) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    for index in range(20):
+        term = keywords[index % len(keywords)].title()
+        sentence = sentences[index % len(sentences)]
+        cards.append(
+            {
+                "front": f"{term}: what should you remember?",
+                "back": f"{sentence[:180]}",
+            }
+        )
+    return cards
+
+
+def _definition_for_term(term: str, sentences: list[str], title: str) -> str:
+    matching_sentence = next((sentence for sentence in sentences if term.lower() in sentence.lower()), "")
+    if matching_sentence:
+        return matching_sentence[:180]
+    return f"A recurring concept detected in {title}; review the source text for its role in the lecture."
