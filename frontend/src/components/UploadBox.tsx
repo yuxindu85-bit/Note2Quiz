@@ -1,6 +1,6 @@
 import { FormEvent, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, FileText, FileUp, Loader2, Sparkles } from 'lucide-react';
+import { CheckCircle2, FileText, FileUp, Loader2, Play, Sparkles } from 'lucide-react';
 import { generatePack, uploadFile } from '../services/api';
 
 const acceptedTypes = '.pdf,.docx,.pptx,.txt';
@@ -27,6 +27,30 @@ export default function UploadBox() {
       navigate(`/packs/${pack.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runDemo() {
+    const demoText = [
+      'Photosynthesis converts light energy into chemical energy in plants.',
+      'Chlorophyll captures light inside chloroplasts and starts the light reactions.',
+      'The light reactions produce ATP and NADPH for the Calvin cycle.',
+      'The Calvin cycle fixes carbon dioxide into sugars.',
+      'Ecosystems depend on photosynthesis because plants form the base of many food webs.'
+    ].join(' ');
+    const demoFile = new File([demoText], 'demo-photosynthesis-notes.txt', { type: 'text/plain' });
+
+    setFile(demoFile);
+    setLoading(true);
+    setError('');
+    try {
+      const upload = await uploadFile(demoFile);
+      const pack = await generatePack(upload.file_id);
+      navigate(`/packs/${pack.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Demo generation failed.');
     } finally {
       setLoading(false);
     }
@@ -65,10 +89,16 @@ export default function UploadBox() {
 
       {error && <p className="error">{error}</p>}
 
-      <button className="primary-button" type="submit" disabled={loading}>
-        {loading ? <Loader2 className="spin" size={18} /> : <FileUp size={18} />}
-        {loading ? 'Generating study pack...' : 'Generate study pack'}
-      </button>
+      <div className="button-row">
+        <button className="primary-button" type="submit" disabled={loading}>
+          {loading ? <Loader2 className="spin" size={18} /> : <FileUp size={18} />}
+          {loading ? 'Generating study pack...' : 'Generate study pack'}
+        </button>
+        <button className="secondary-button" type="button" disabled={loading} onClick={runDemo}>
+          <Play size={18} />
+          Try demo notes
+        </button>
+      </div>
     </form>
   );
 }

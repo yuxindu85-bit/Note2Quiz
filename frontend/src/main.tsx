@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import Result from './pages/Result';
 import HistoryPage from './pages/History';
 import Upload from './pages/Upload';
+import ApiStatus from './components/ApiStatus';
 import './styles.css';
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
               History
             </NavLink>
           </nav>
+          <ApiStatus />
         </header>
         <main>
           <Routes>

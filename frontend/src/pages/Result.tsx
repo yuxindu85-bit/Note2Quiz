@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { Download, Layers3, Loader2 } from 'lucide-react';
-import { exportUrl, getPack, StudyPack } from '../services/api';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Download, Layers3, Loader2, RefreshCw } from 'lucide-react';
+import { exportUrl, generatePack, getPack, StudyPack } from '../services/api';
 
 const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Original Text'] as const;
 type Tab = (typeof tabs)[number];
@@ -12,6 +12,8 @@ export default function Result() {
   const [activeTab, setActiveTab] = useState<Tab>('Summary');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!packId) return;
@@ -20,6 +22,22 @@ export default function Result() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pack.'))
       .finally(() => setLoading(false));
   }, [packId]);
+
+  async function handleRegenerate() {
+    if (!pack) return;
+    setRegenerating(true);
+    setError('');
+    try {
+      const regenerated = await generatePack(pack.file_id, true);
+      setPack(regenerated);
+      setActiveTab('Summary');
+      navigate(`/packs/${regenerated.id}`, { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not regenerate this pack.');
+    } finally {
+      setRegenerating(false);
+    }
+  }
 
   const content = useMemo(() => {
     if (!pack) return null;
@@ -109,11 +127,18 @@ export default function Result() {
             questions and {pack.flashcards.length} flashcards.
           </p>
         </div>
-        <a className="secondary-button" href={exportUrl(pack.id)}>
-          <Download size={18} />
-          Export Markdown
-        </a>
+        <div className="result-actions">
+          <button className="secondary-button" type="button" disabled={regenerating} onClick={handleRegenerate}>
+            {regenerating ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+            {regenerating ? 'Regenerating...' : 'Regenerate'}
+          </button>
+          <a className="secondary-button" href={exportUrl(pack.id)}>
+            <Download size={18} />
+            Export Markdown
+          </a>
+        </div>
       </div>
+      {error && <p className="error">{error}</p>}
       <div className="tabs">
         {tabs.map((tab) => (
           <button

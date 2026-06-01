@@ -10,6 +10,13 @@ class UploadResponse(BaseModel):
     preview: str
 
 
+class HealthResponse(BaseModel):
+    status: str
+    database: str
+    demo_mode: bool
+    ai_model: str
+
+
 class QuizItem(BaseModel):
     question: str
     choices: list[str] = Field(default_factory=list)

@@ -36,6 +36,13 @@ export type PackListItem = {
   created_at: string;
 };
 
+export type ApiHealth = {
+  status: string;
+  database: string;
+  demo_mode: boolean;
+  ai_model: string;
+};
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({ detail: 'Request failed.' }));
@@ -50,8 +57,13 @@ export async function uploadFile(file: File): Promise<{ file_id: string; filenam
   return parseResponse(await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: formData }));
 }
 
-export async function generatePack(fileId: string): Promise<StudyPack> {
-  return parseResponse(await fetch(`${API_BASE}/api/generate/${fileId}`, { method: 'POST' }));
+export async function getHealth(): Promise<ApiHealth> {
+  return parseResponse(await fetch(`${API_BASE}/api/health`));
+}
+
+export async function generatePack(fileId: string, force = false): Promise<StudyPack> {
+  const suffix = force ? '?force=true' : '';
+  return parseResponse(await fetch(`${API_BASE}/api/generate/${fileId}${suffix}`, { method: 'POST' }));
 }
 
 export async function getPack(packId: string): Promise<StudyPack> {

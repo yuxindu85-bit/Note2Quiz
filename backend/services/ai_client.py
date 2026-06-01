@@ -174,41 +174,35 @@ def _extract_keywords(text: str) -> list[str]:
 
 
 def _mock_quiz(title: str, sentences: list[str], keywords: list[str]) -> list[dict[str, Any]]:
-    templates = [
-        "Which concept is most central to this note?",
-        "Which term should a student define first?",
-        "What topic is most likely to appear on a review quiz?",
-        "Which idea best matches the uploaded lecture?",
-        "Which item belongs in the key terms list?",
-        "What should be connected to the summary?",
-        "Which phrase is directly supported by the source text?",
-        "Which concept deserves a flashcard?",
-        "What is a useful exam focus from this material?",
-        f"What is the strongest study signal in {title}?",
+    question_stems = [
+        "Which statement best explains {term}?",
+        "What should you remember about {term}?",
+        "Which source-backed fact is most connected to {term}?",
+        "Which answer would be strongest on a quiz about {term}?",
+        "Which statement is supported by the uploaded notes about {term}?",
+        "Which explanation best fits {term}?",
+        "What is the clearest study takeaway for {term}?",
+        "Which detail belongs in a summary of {term}?",
+        "Which option accurately reflects the notes on {term}?",
+        "In {title}, what is the best answer about {term}?",
     ]
-    distractors = [
-        "page margins",
-        "slide transitions",
-        "file naming",
-        "citation style",
-        "attendance policy",
-        "font selection",
-        "printing settings",
-        "desktop shortcuts",
-        "folder sorting",
-        "keyboard layout",
-    ]
+    fact_pool = _fact_pool(sentences)
     quiz: list[dict[str, Any]] = []
     for index in range(10):
-        answer = keywords[index % len(keywords)].title()
-        sentence = sentences[index % len(sentences)]
+        term = keywords[index % len(keywords)].title()
+        answer = fact_pool[index % len(fact_pool)]
         choices = [answer]
+        offset = 1
         while len(choices) < 4:
-            distractor = distractors[(index + len(choices) - 1) % len(distractors)]
-            choices.append(distractor.title())
+            distractor = fact_pool[(index + offset) % len(fact_pool)]
+            if distractor not in choices:
+                choices.append(distractor)
+            offset += 1
+            if offset > len(fact_pool) + 4:
+                choices.append(_generic_distractor(len(choices)))
         quiz.append(
             {
-                "question": f"{templates[index]} Context: {sentence[:110]}",
+                "question": question_stems[index].format(term=term, title=title),
                 "choices": choices[:4],
                 "answer": answer,
             }
@@ -217,14 +211,22 @@ def _mock_quiz(title: str, sentences: list[str], keywords: list[str]) -> list[di
 
 
 def _mock_flashcards(sentences: list[str], keywords: list[str]) -> list[dict[str, str]]:
+    prompts = [
+        "Define {term}.",
+        "Why does {term} matter?",
+        "What is the key fact about {term}?",
+        "How would you explain {term} in one sentence?",
+        "What should you connect {term} to?",
+    ]
     cards: list[dict[str, str]] = []
     for index in range(20):
         term = keywords[index % len(keywords)].title()
         sentence = sentences[index % len(sentences)]
+        prompt = prompts[index % len(prompts)].format(term=term)
         cards.append(
             {
-                "front": f"{term}: what should you remember?",
-                "back": f"{sentence[:180]}",
+                "front": prompt,
+                "back": _flashcard_answer(term, sentence),
             }
         )
     return cards
@@ -235,3 +237,35 @@ def _definition_for_term(term: str, sentences: list[str], title: str) -> str:
     if matching_sentence:
         return matching_sentence[:180]
     return f"A recurring concept detected in {title}; review the source text for its role in the lecture."
+
+
+def _fact_pool(sentences: list[str]) -> list[str]:
+    facts = [_clean_fact(sentence) for sentence in sentences if sentence.strip()]
+    facts = [fact for fact in facts if len(fact) >= 20]
+    while len(facts) < 4:
+        facts.append(_generic_distractor(len(facts)))
+    return facts[:12]
+
+
+def _clean_fact(sentence: str) -> str:
+    sentence = " ".join(sentence.split())
+    if len(sentence) <= 150:
+        return sentence
+    return f"{sentence[:147].rstrip()}..."
+
+
+def _generic_distractor(index: int) -> str:
+    distractors = [
+        "The notes focus mainly on formatting choices rather than course content.",
+        "The material says the topic is unrelated to the uploaded lecture.",
+        "The source text only describes file storage and does not include study ideas.",
+        "The lecture states that this concept should be ignored during review.",
+    ]
+    return distractors[index % len(distractors)]
+
+
+def _flashcard_answer(term: str, sentence: str) -> str:
+    clean_sentence = _clean_fact(sentence)
+    if term.lower() in clean_sentence.lower():
+        return clean_sentence
+    return f"Connect {term} to this source fact: {clean_sentence}"

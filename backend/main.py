@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from database import get_connection, init_db, row_to_pack
-from schemas import StudyPack, StudyPackListResponse, UploadResponse
+from schemas import HealthResponse, StudyPack, StudyPackListResponse, UploadResponse
 from services.ai_client import generate_study_pack
 from services.file_parser import SUPPORTED_EXTENSIONS, FileParseError, extract_text
 from services.markdown_export import pack_to_markdown, safe_markdown_filename
@@ -47,6 +47,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/health", response_model=HealthResponse)
+def health_check() -> HealthResponse:
+    try:
+        with get_connection() as conn:
+            conn.execute("SELECT 1").fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database is not available.") from exc
+
+    return HealthResponse(
+        status="ok",
+        database="sqlite",
+        demo_mode=not bool(os.getenv("AI_API_KEY")),
+        ai_model=os.getenv("AI_MODEL", "gpt-4o-mini"),
+    )
 
 
 @app.post("/api/upload", response_model=UploadResponse)
@@ -89,14 +105,14 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
 
 
 @app.post("/api/generate/{file_id}", response_model=StudyPack)
-async def generate_pack(file_id: str) -> StudyPack:
+async def generate_pack(file_id: str, force: bool = False) -> StudyPack:
     with get_connection() as conn:
         file_row = conn.execute("SELECT * FROM uploaded_files WHERE id = ?", (file_id,)).fetchone()
         existing_pack = conn.execute("SELECT * FROM study_packs WHERE file_id = ?", (file_id,)).fetchone()
 
     if file_row is None:
         raise HTTPException(status_code=404, detail="Uploaded file not found.")
-    if existing_pack is not None:
+    if existing_pack is not None and not force:
         return StudyPack(**row_to_pack(existing_pack))
 
     try:
@@ -109,6 +125,8 @@ async def generate_pack(file_id: str) -> StudyPack:
 
     pack_id = str(uuid.uuid4())
     with get_connection() as conn:
+        if force:
+            conn.execute("DELETE FROM study_packs WHERE file_id = ?", (file_id,))
         conn.execute(
             """
             INSERT INTO study_packs

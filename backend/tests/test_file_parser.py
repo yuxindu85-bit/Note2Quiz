@@ -42,4 +42,6 @@ def test_mock_study_pack_uses_source_text_variety() -> None:
     assert len(pack["flashcards"]) == 20
     assert len(questions) > 1
     assert len(flashcard_backs) > 1
+    assert all(len(item["choices"]) == 4 for item in pack["quiz"])
+    assert all(item["answer"] in item["choices"] for item in pack["quiz"])
     assert any(term["term"] == "Photosynthesis" for term in pack["key_terms"])
