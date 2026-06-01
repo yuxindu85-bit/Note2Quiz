@@ -98,6 +98,25 @@ select {
   white-space: nowrap;
 }
 
+.language-picker {
+  align-items: center;
+  color: #526173;
+  display: inline-flex;
+  font-size: 0.84rem;
+  font-weight: 800;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.language-picker select {
+  background: #ffffff;
+  border: 1px solid #d8e1ea;
+  border-radius: 8px;
+  color: #243442;
+  min-height: 34px;
+  padding: 6px 9px;
+}
+
 .status-pill.danger {
   background: #fff0f0;
   border-color: #ffd0d0;
@@ -753,6 +772,14 @@ main {
   .topbar nav {
     overflow-x: auto;
     width: 100%;
+  }
+
+  .language-picker {
+    width: 100%;
+  }
+
+  .language-picker select {
+    flex: 1;
   }
 
   .button-row {

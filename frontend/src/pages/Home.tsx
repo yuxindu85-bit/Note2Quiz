@@ -1,25 +1,24 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, BrainCircuit, FileText, Library, ShieldCheck } from 'lucide-react';
 import UploadBox from '../components/UploadBox';
+import { copy, UiLanguage } from '../i18n';
 
-export default function Home() {
+export default function Home({ uiLanguage }: { uiLanguage: UiLanguage }) {
+  const t = copy[uiLanguage];
   return (
     <div className="home-page">
       <section className="hero-grid">
         <div className="intro">
-          <p className="eyebrow">Open-source study assistant</p>
-          <h1>Turn lecture files into focused study packs.</h1>
-          <p>
-            Note2Quiz extracts text from class materials and creates summaries, quizzes, flashcards,
-            key terms, history, and Markdown exports. It runs locally and includes a full demo mode.
-          </p>
+          <p className="eyebrow">{t.eyebrow}</p>
+          <h1>{t.headline}</h1>
+          <p>{t.intro}</p>
           <div className="hero-actions">
             <Link className="primary-button" to="/upload">
-              Start studying
+              {t.start}
               <ArrowRight size={18} />
             </Link>
             <Link className="secondary-button" to="/history">
-              View history
+              {t.viewHistory}
             </Link>
           </div>
           <div className="feature-row">
@@ -29,7 +28,7 @@ export default function Home() {
             <span>TXT</span>
           </div>
         </div>
-        <UploadBox />
+        <UploadBox uiLanguage={uiLanguage} />
       </section>
 
       <section className="dashboard-grid">

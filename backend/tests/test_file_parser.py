@@ -53,10 +53,19 @@ def test_mock_study_pack_honors_generation_options() -> None:
         "Companies compare market demand, discounts, coupons, airline tickets, and competition."
     )
 
-    pack = mock_study_pack("economics.txt", text, key_terms_count=5, quiz_order="random", language="spanish")
+    pack = mock_study_pack(
+        "economics.txt",
+        text,
+        key_terms_count=5,
+        quiz_order="random",
+        language="english",
+        translation_language="spanish",
+        include_translation=True,
+    )
 
     assert pack["key_terms_count"] == 5
     assert pack["quiz_order"] == "random"
-    assert pack["language"] == "spanish"
+    assert pack["language"] == "english"
+    assert pack["translation_language"] == "spanish"
     assert len(pack["key_terms"]) == 5
     assert "Demo translation preview" in pack["translation_text"]

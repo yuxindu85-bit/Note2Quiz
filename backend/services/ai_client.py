@@ -10,6 +10,7 @@ import httpx
 
 MAX_PROMPT_CHARS = 24000
 LANGUAGE_LABELS = {
+    "auto": "Auto-detected source language",
     "english": "English",
     "chinese": "Chinese",
     "french": "French",
@@ -24,17 +25,37 @@ async def generate_study_pack(
     key_terms_count: int = 10,
     quiz_order: str = "ranked",
     language: str = "english",
+    translation_language: str = "none",
 ) -> dict[str, Any]:
     key_terms_count = max(3, min(key_terms_count, 30))
     quiz_order = quiz_order if quiz_order in {"ranked", "random"} else "ranked"
-    language = language if language in LANGUAGE_LABELS else "english"
+    requested_language = language if language in LANGUAGE_LABELS else "auto"
+    language = _detect_language(text) if requested_language == "auto" else requested_language
+    translation_language = translation_language if translation_language in LANGUAGE_LABELS else "none"
+    include_translation = translation_language != "none"
     api_key = os.getenv("AI_API_KEY")
     if not api_key:
-        return mock_study_pack(title, text, key_terms_count, quiz_order, language)
+        return mock_study_pack(
+            title,
+            text,
+            key_terms_count,
+            quiz_order,
+            language,
+            translation_language=translation_language,
+            include_translation=include_translation,
+        )
 
     base_url = os.getenv("AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
     model = os.getenv("AI_MODEL", "gpt-4o-mini")
-    prompt = _build_prompt(title, text[:MAX_PROMPT_CHARS], key_terms_count, quiz_order, language)
+    prompt = _build_prompt(
+        title,
+        text[:MAX_PROMPT_CHARS],
+        key_terms_count,
+        quiz_order,
+        language,
+        translation_language=translation_language,
+        include_translation=include_translation,
+    )
 
     async with httpx.AsyncClient(timeout=60) as client:
         response = await client.post(
@@ -59,7 +80,16 @@ async def generate_study_pack(
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
 
-    return normalize_pack(_parse_json_object(content), title, text, key_terms_count, quiz_order, language)
+    return normalize_pack(
+        _parse_json_object(content),
+        title,
+        text,
+        key_terms_count,
+        quiz_order,
+        language,
+        translation_language=translation_language,
+        include_translation=include_translation,
+    )
 
 
 def _build_prompt(
@@ -68,8 +98,11 @@ def _build_prompt(
     key_terms_count: int,
     quiz_order: str,
     language: str,
+    translation_language: str,
+    include_translation: bool,
 ) -> str:
     language_label = LANGUAGE_LABELS[language]
+    translation_label = LANGUAGE_LABELS.get(translation_language, "")
     order_instruction = (
         "Order quiz questions from most foundational to more advanced."
         if quiz_order == "ranked"
@@ -84,10 +117,10 @@ Return JSON with exactly these keys:
 - quiz: array of 10 objects with question, choices array of 4 strings, answer string
 - flashcards: array of 20 objects with front and back
 - key_terms: array of exactly {key_terms_count} objects with term and short definition, ordered by importance
-- translation_text: translated version of the lecture text in {language_label}; if language is English, lightly clean the original text
+- translation_text: {"translated version of the lecture text in " + translation_label if include_translation else "empty string"}
 
 Rules:
-- Write all generated study content in {language_label}.
+- Write all generated study content in the same language as the lecture text, currently detected as {language_label}.
 - {order_instruction}
 - Do not invent unsupported facts. Use the lecture text as the source.
 
@@ -103,8 +136,18 @@ def normalize_pack(
     key_terms_count: int,
     quiz_order: str,
     language: str,
+    translation_language: str,
+    include_translation: bool,
 ) -> dict[str, Any]:
-    fallback = mock_study_pack(fallback_title, original_text, key_terms_count, quiz_order, language)
+    fallback = mock_study_pack(
+        fallback_title,
+        original_text,
+        key_terms_count,
+        quiz_order,
+        language,
+        translation_language=translation_language,
+        include_translation=include_translation,
+    )
     return {
         "title": str(data.get("title") or fallback_title),
         "summary": str(data.get("summary") or "No summary was generated."),
@@ -112,8 +155,9 @@ def normalize_pack(
         "flashcards": _with_fallback(_list_of_dicts(data.get("flashcards"), 20), fallback["flashcards"], 20),
         "key_terms": _with_fallback(_list_of_dicts(data.get("key_terms"), key_terms_count), fallback["key_terms"], key_terms_count),
         "original_text": original_text,
-        "translation_text": str(data.get("translation_text") or fallback["translation_text"]),
+        "translation_text": str(data.get("translation_text") or fallback["translation_text"]) if include_translation else "",
         "language": language,
+        "translation_language": translation_language,
         "key_terms_count": key_terms_count,
         "quiz_order": quiz_order,
     }
@@ -155,6 +199,8 @@ def mock_study_pack(
     key_terms_count: int = 10,
     quiz_order: str = "ranked",
     language: str = "english",
+    translation_language: str = "none",
+    include_translation: bool = False,
 ) -> dict[str, Any]:
     sentences = _extract_sentences(text)
     keywords = _extract_keywords(text)
@@ -183,8 +229,9 @@ def mock_study_pack(
         "flashcards": flashcards,
         "key_terms": key_terms,
         "original_text": text,
-        "translation_text": _mock_translation(text, language),
+        "translation_text": _mock_translation(text, translation_language) if include_translation else "",
         "language": language,
+        "translation_language": translation_language,
         "key_terms_count": key_terms_count,
         "quiz_order": quiz_order,
     }
@@ -197,6 +244,23 @@ def _extract_sentences(text: str) -> list[str]:
     if sentences:
         return sentences[:18]
     return [compact[:220]] if compact else ["Review the uploaded material and identify the main ideas."]
+
+
+def _detect_language(text: str) -> str:
+    sample = text[:6000].lower()
+    if re.search(r"[\u4e00-\u9fff]", sample):
+        return "chinese"
+    if re.search(r"[\u0400-\u04ff]", sample):
+        return "russian"
+    french_markers = [" le ", " la ", " les ", " des ", " une ", " est ", " avec ", " pour ", " dans ", "é", "è", "à", "ç"]
+    spanish_markers = [" el ", " la ", " los ", " las ", " una ", " que ", " con ", " para ", "ción", "ñ", "¿", "¡"]
+    french_score = sum(sample.count(marker) for marker in french_markers)
+    spanish_score = sum(sample.count(marker) for marker in spanish_markers)
+    if french_score >= 3 and french_score > spanish_score:
+        return "french"
+    if spanish_score >= 3 and spanish_score > french_score:
+        return "spanish"
+    return "english"
 
 
 def _extract_keywords(text: str) -> list[str]:

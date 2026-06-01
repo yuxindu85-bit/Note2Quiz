@@ -73,14 +73,15 @@ def test_generate_accepts_study_options(tmp_path: Path, monkeypatch) -> None:
 
     response = client.post(
         f"/api/generate/{file_id}",
-        json={"key_terms_count": 5, "quiz_order": "random", "language": "chinese"},
+        json={"key_terms_count": 5, "quiz_order": "random", "language": "auto", "translation_language": "chinese"},
     )
 
     assert response.status_code == 200
     pack = response.json()
     assert pack["key_terms_count"] == 5
     assert pack["quiz_order"] == "random"
-    assert pack["language"] == "chinese"
+    assert pack["language"] == "english"
+    assert pack["translation_language"] == "chinese"
     assert len(pack["key_terms"]) == 5
     assert "Demo translation preview" in pack["translation_text"]
 

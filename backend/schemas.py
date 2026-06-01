@@ -36,7 +36,8 @@ class KeyTerm(BaseModel):
 class GenerateOptions(BaseModel):
     key_terms_count: int = Field(default=10, ge=3, le=30)
     quiz_order: str = Field(default="ranked", pattern="^(ranked|random)$")
-    language: str = Field(default="english", pattern="^(english|chinese|french|russian|spanish)$")
+    language: str = Field(default="auto", pattern="^(auto|english|chinese|french|russian|spanish)$")
+    translation_language: str = Field(default="none", pattern="^(none|english|chinese|french|russian|spanish)$")
     force: bool = False
 
 
@@ -51,6 +52,7 @@ class StudyPack(BaseModel):
     original_text: str
     translation_text: str = ""
     language: str = "english"
+    translation_language: str = "none"
     key_terms_count: int = 10
     quiz_order: str = "ranked"
     created_at: str

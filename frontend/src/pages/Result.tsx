@@ -9,7 +9,8 @@ import {
   QuizOrder,
   StudyLanguage,
   StudyPack,
-  StudyPlan
+  StudyPlan,
+  TranslationLanguage
 } from '../services/api';
 
 const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Study Plan', 'Original Text'] as const;
@@ -19,7 +20,8 @@ const languageLabels: Record<string, string> = {
   chinese: '中文',
   french: 'Français',
   russian: 'Русский',
-  spanish: 'Español'
+  spanish: 'Español',
+  none: 'No translation'
 };
 
 export default function Result() {
@@ -51,7 +53,8 @@ export default function Result() {
         force: true,
         key_terms_count: pack.key_terms_count,
         quiz_order: pack.quiz_order as QuizOrder,
-        language: pack.language as StudyLanguage
+        language: 'auto' as StudyLanguage,
+        translation_language: pack.translation_language as TranslationLanguage
       });
       setPack(regenerated);
       setActiveTab('Summary');
@@ -178,7 +181,7 @@ export default function Result() {
         </section>
         {pack.translation_text && (
           <section className="translation-panel">
-            <h2>Translation · {languageLabels[pack.language] ?? pack.language}</h2>
+            <h2>Translation · {languageLabels[pack.translation_language] ?? pack.translation_language}</h2>
             <pre className="original-text">{pack.translation_text}</pre>
           </section>
         )}
@@ -218,7 +221,8 @@ export default function Result() {
           <div className="metadata-row">
             <span>{pack.key_terms.length} key terms</span>
             <span>{pack.quiz_order === 'random' ? 'Random quiz order' : 'Most important first'}</span>
-            <span>{languageLabels[pack.language] ?? pack.language}</span>
+            <span>Analysis: {languageLabels[pack.language] ?? pack.language}</span>
+            <span>Translation: {languageLabels[pack.translation_language] ?? pack.translation_language}</span>
           </div>
         </div>
         <div className="result-actions">

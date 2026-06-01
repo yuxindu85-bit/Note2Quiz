@@ -141,6 +141,7 @@ async def generate_pack(
             key_terms_count=options.key_terms_count,
             quiz_order=options.quiz_order,
             language=options.language,
+            translation_language=options.translation_language,
         )
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text[:400] if exc.response is not None else "AI provider error."
@@ -157,9 +158,9 @@ async def generate_pack(
             INSERT INTO study_packs
             (
                 id, file_id, title, summary, quiz_json, flashcards_json, key_terms_json,
-                original_text, translation_text, language, key_terms_count, quiz_order
+                original_text, translation_text, language, translation_language, key_terms_count, quiz_order
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 pack_id,
@@ -172,6 +173,7 @@ async def generate_pack(
                 generated["original_text"],
                 generated["translation_text"],
                 generated["language"],
+                generated["translation_language"],
                 generated["key_terms_count"],
                 generated["quiz_order"],
             ),

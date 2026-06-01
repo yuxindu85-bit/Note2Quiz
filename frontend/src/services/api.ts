@@ -27,18 +27,21 @@ export type StudyPack = {
   original_text: string;
   translation_text: string;
   language: string;
+  translation_language: string;
   key_terms_count: number;
   quiz_order: string;
   created_at: string;
 };
 
-export type StudyLanguage = 'english' | 'chinese' | 'french' | 'russian' | 'spanish';
+export type StudyLanguage = 'auto' | 'english' | 'chinese' | 'french' | 'russian' | 'spanish';
+export type TranslationLanguage = 'none' | 'english' | 'chinese' | 'french' | 'russian' | 'spanish';
 export type QuizOrder = 'ranked' | 'random';
 
 export type GenerateOptions = {
   key_terms_count?: number;
   quiz_order?: QuizOrder;
   language?: StudyLanguage;
+  translation_language?: TranslationLanguage;
   force?: boolean;
 };
 
