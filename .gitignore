@@ -1,0 +1,15 @@
+.DS_Store
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+.venv/
+venv/
+node_modules/
+dist/
+build/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/*.db
+backend/*.sqlite
+frontend/.vite/

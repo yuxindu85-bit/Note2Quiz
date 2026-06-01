@@ -1,0 +1,114 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { Download, Loader2 } from 'lucide-react';
+import { exportUrl, getPack, StudyPack } from '../services/api';
+
+const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Original Text'] as const;
+type Tab = (typeof tabs)[number];
+
+export default function Result() {
+  const { packId } = useParams();
+  const [pack, setPack] = useState<StudyPack | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('Summary');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!packId) return;
+    getPack(packId)
+      .then(setPack)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pack.'))
+      .finally(() => setLoading(false));
+  }, [packId]);
+
+  const content = useMemo(() => {
+    if (!pack) return null;
+    if (activeTab === 'Summary') {
+      return <p className="summary-text">{pack.summary}</p>;
+    }
+    if (activeTab === 'Quiz') {
+      return (
+        <div className="stack">
+          {pack.quiz.map((item, index) => (
+            <article className="item-card" key={`${item.question}-${index}`}>
+              <h3>{index + 1}. {item.question}</h3>
+              <ul>
+                {item.choices.map((choice) => (
+                  <li key={choice}>{choice}</li>
+                ))}
+              </ul>
+              <p className="answer">Answer: {item.answer}</p>
+            </article>
+          ))}
+        </div>
+      );
+    }
+    if (activeTab === 'Flashcards') {
+      return (
+        <div className="card-grid">
+          {pack.flashcards.map((card, index) => (
+            <article className="item-card" key={`${card.front}-${index}`}>
+              <h3>{card.front}</h3>
+              <p>{card.back}</p>
+            </article>
+          ))}
+        </div>
+      );
+    }
+    if (activeTab === 'Key Terms') {
+      return (
+        <div className="stack">
+          {pack.key_terms.map((term, index) => (
+            <article className="term-row" key={`${term.term}-${index}`}>
+              <strong>{term.term}</strong>
+              <span>{term.definition}</span>
+            </article>
+          ))}
+        </div>
+      );
+    }
+    return <pre className="original-text">{pack.original_text}</pre>;
+  }, [activeTab, pack]);
+
+  if (loading) {
+    return <div className="center-state"><Loader2 className="spin" /> Loading study pack...</div>;
+  }
+
+  if (error || !pack) {
+    return (
+      <div className="center-state">
+        <h2>Study pack not found</h2>
+        <p>{error || 'This pack may have been deleted.'}</p>
+        <Link to="/">Create a new pack</Link>
+      </div>
+    );
+  }
+
+  return (
+    <section className="result-page">
+      <div className="result-header">
+        <div>
+          <p className="eyebrow">Study pack</p>
+          <h1>{pack.title}</h1>
+        </div>
+        <a className="secondary-button" href={exportUrl(pack.id)}>
+          <Download size={18} />
+          Export Markdown
+        </a>
+      </div>
+      <div className="tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab}
+            className={activeTab === tab ? 'active' : ''}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+      <div className="tab-panel">{content}</div>
+    </section>
+  );
+}
