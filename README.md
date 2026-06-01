@@ -16,7 +16,7 @@
 
 ## Product
 
-Note2Quiz is a local-first study assistant for students. Upload a PDF, DOCX, PPTX, or TXT lecture file and the app extracts readable text, generates a concise study summary, creates a 10-question multiple-choice quiz, builds 20 flashcards, defines key terms, saves everything in SQLite, and exports the result as Markdown.
+Note2Quiz is a local-first AI study system for students. Upload a PDF, DOCX, PPTX, or TXT lecture file and the app extracts readable text, generates a concise study summary, creates a 10-question multiple-choice quiz, builds 20 flashcards, defines key terms, creates study plans, runs exam practice, saves wrong answers, stores everything in SQLite, and exports the result as Markdown.
 
 The project supports OpenAI-compatible APIs, but it does not require a paid AI account. If `AI_API_KEY` is missing, Note2Quiz automatically switches into demo mode with realistic mock study material.
 
@@ -28,6 +28,12 @@ The project supports OpenAI-compatible APIs, but it does not require a paid AI a
 - Save uploaded text and generated packs in SQLite
 - Browse pack history and reopen saved results
 - View outputs in tabs: Summary, Quiz, Flashcards, Key Terms, Original Text
+- Generate 3-day, 5-day, and 7-day study plans
+- Start Exam Mode from any generated quiz
+- Answer one question at a time with progress and optional timer
+- Save exam attempts and final scores
+- Save wrong answers for targeted review
+- Practice wrong questions again from the Wrong Answers page
 - Export any study pack as Markdown
 - Run with OpenAI-compatible APIs or free demo mode
 - Clean responsive React dashboard UI
@@ -45,6 +51,8 @@ flowchart LR
   E --> G["Demo Mock Generator"]
   B --> H["SQLite"]
   H --> I["Study Pack History"]
+  H --> K["Exam Attempts + Wrong Answers"]
+  H --> L["Study Plans"]
   B --> J["Markdown Export"]
 ```
 
@@ -56,6 +64,10 @@ Add screenshots here after running the app:
 - Upload page
 - Study pack tabs
 - History page
+- Exam mode
+- Exam review
+- Wrong answers page
+- Study plan tab
 
 ## Tech Stack
 
@@ -137,10 +149,34 @@ If `AI_API_KEY` is not set, the backend automatically uses a local mock generato
 4. Create 10 quiz questions
 5. Create 20 flashcards
 6. Create key terms
-7. Save the pack in SQLite
-8. Export Markdown
+7. Generate study plans
+8. Run an exam and save wrong answers
+9. Save the pack in SQLite
+10. Export Markdown
 
 This makes the project easy to evaluate without spending money.
+
+## Exam Mode
+
+Every generated quiz can be used as an exam. Exam Mode shows one question at a time, includes a progress indicator, supports optional timers, records selected answers, calculates the final score, and displays a review page with correct answers, wrong answers, explanations, and the final score.
+
+Exam attempts are saved in SQLite so students can track practice history over time.
+
+## Wrong Answer Review
+
+Wrong answers from completed exams are saved automatically. The Wrong Answers page groups misses by study pack and shows:
+
+- question
+- user answer
+- correct answer
+- explanation
+- source study pack
+
+Students can jump back into Exam Mode to practice missed material again.
+
+## Study Plan Generator
+
+The Study Plan tab creates 3-day, 5-day, or 7-day plans from the current study pack. In demo mode, plans are generated locally from summary, flashcards, quiz items, and key terms. With an AI provider configured, this area can be extended to request richer provider-generated plans.
 
 ## API
 
@@ -151,6 +187,11 @@ This makes the project easy to evaluate without spending money.
 | `GET` | `/api/packs` | List saved study packs |
 | `GET` | `/api/packs/{pack_id}` | Get one study pack |
 | `GET` | `/api/export/{pack_id}` | Export one pack as Markdown |
+| `POST` | `/api/packs/{pack_id}/exam/start` | Start an exam attempt |
+| `POST` | `/api/packs/{pack_id}/exam/submit` | Submit exam answers and save wrong answers |
+| `GET` | `/api/exam-attempts` | List exam attempt history |
+| `GET` | `/api/wrong-answers` | List saved wrong answers |
+| `POST` | `/api/packs/{pack_id}/study-plan` | Generate or return a study plan |
 
 ## Verification
 
@@ -166,10 +207,12 @@ cd frontend && npm run build
 
 ## Roadmap
 
+- Add richer AI-generated study plans
+- Add spaced repetition scheduling for wrong answers
 - Add Anki CSV export
-- Add PDF export for study packs
+- Add PDF export for study packs and exam reviews
 - Add local chunking for very large lecture files
-- Add streaming generation progress
+- Add streaming generation progress for AI providers
 - Add search and tags for saved packs
 - Add Docker Compose for one-command startup
 - Add GitHub Actions CI

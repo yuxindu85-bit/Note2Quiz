@@ -46,6 +46,65 @@ def test_upload_generate_list_and_export(tmp_path: Path, monkeypatch) -> None:
     assert "# lecture.txt" in export_response.text
 
 
+def test_exam_wrong_answers_and_study_plan(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("NOTE2QUIZ_DB_PATH", str(tmp_path / "note2quiz.db"))
+    monkeypatch.setenv("NOTE2QUIZ_UPLOAD_DIR", str(tmp_path / "uploads"))
+    monkeypatch.delenv("AI_API_KEY", raising=False)
+
+    main = importlib.import_module("main")
+    main.UPLOAD_DIR = tmp_path / "uploads"
+    main.setup_app_storage()
+
+    client = TestClient(main.app)
+    upload_response = client.post(
+        "/api/upload",
+        files={
+            "file": (
+                "biology.txt",
+                b"Photosynthesis converts light energy into chemical energy. Chlorophyll captures light.",
+                "text/plain",
+            )
+        },
+    )
+    file_id = upload_response.json()["file_id"]
+    pack = client.post(f"/api/generate/{file_id}").json()
+
+    start_response = client.post(f"/api/packs/{pack['id']}/exam/start")
+    assert start_response.status_code == 200
+    exam = start_response.json()
+    assert len(exam["questions"]) == 10
+
+    wrong_answer = "Definitely wrong"
+    submit_response = client.post(
+        f"/api/packs/{pack['id']}/exam/submit",
+        json={
+            "attempt_id": exam["attempt_id"],
+            "duration_seconds": 42,
+            "answers": [{"question_index": 0, "answer": wrong_answer}],
+        },
+    )
+    assert submit_response.status_code == 200
+    result = submit_response.json()
+    assert result["total_questions"] == 10
+    assert result["score"] < result["total_questions"]
+
+    attempts_response = client.get("/api/exam-attempts")
+    assert attempts_response.status_code == 200
+    assert attempts_response.json()["attempts"][0]["id"] == exam["attempt_id"]
+
+    wrong_response = client.get("/api/wrong-answers")
+    assert wrong_response.status_code == 200
+    wrong_answers = wrong_response.json()["wrong_answers"]
+    assert wrong_answers
+    assert wrong_answers[0]["user_answer"] == wrong_answer
+
+    plan_response = client.post(f"/api/packs/{pack['id']}/study-plan", json={"duration_days": 5})
+    assert plan_response.status_code == 200
+    plan = plan_response.json()
+    assert plan["duration_days"] == 5
+    assert len(plan["plan"]) == 5
+
+
 def test_health_check_reports_demo_mode(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("NOTE2QUIZ_DB_PATH", str(tmp_path / "note2quiz.db"))
     monkeypatch.setenv("NOTE2QUIZ_UPLOAD_DIR", str(tmp_path / "uploads"))

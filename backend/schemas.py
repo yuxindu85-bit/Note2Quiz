@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,6 +33,13 @@ class KeyTerm(BaseModel):
     definition: str
 
 
+class GenerateOptions(BaseModel):
+    key_terms_count: int = Field(default=10, ge=3, le=30)
+    quiz_order: str = Field(default="ranked", pattern="^(ranked|random)$")
+    language: str = Field(default="english", pattern="^(english|chinese|french|russian|spanish)$")
+    force: bool = False
+
+
 class StudyPack(BaseModel):
     id: str
     file_id: str
@@ -42,6 +49,10 @@ class StudyPack(BaseModel):
     flashcards: list[dict[str, Any]]
     key_terms: list[dict[str, Any]]
     original_text: str
+    translation_text: str = ""
+    language: str = "english"
+    key_terms_count: int = 10
+    quiz_order: str = "ranked"
     created_at: str
 
 
@@ -55,3 +66,73 @@ class StudyPackListItem(BaseModel):
 
 class StudyPackListResponse(BaseModel):
     packs: list[StudyPackListItem]
+
+
+class ExamStartResponse(BaseModel):
+    attempt_id: str
+    pack_id: str
+    title: str
+    questions: list[dict[str, Any]]
+
+
+class ExamAnswer(BaseModel):
+    question_index: int
+    answer: str
+
+
+class ExamSubmitRequest(BaseModel):
+    attempt_id: Optional[str] = None
+    answers: list[ExamAnswer]
+    duration_seconds: Optional[int] = Field(default=None, ge=0)
+
+
+class ExamSubmitResponse(BaseModel):
+    attempt_id: str
+    pack_id: str
+    score: int
+    total_questions: int
+    review: list[dict[str, Any]]
+
+
+class ExamAttemptListItem(BaseModel):
+    id: str
+    pack_id: str
+    title: str
+    score: int
+    total_questions: int
+    duration_seconds: Optional[int] = None
+    status: str
+    created_at: str
+    completed_at: Optional[str] = None
+
+
+class ExamAttemptListResponse(BaseModel):
+    attempts: list[ExamAttemptListItem]
+
+
+class WrongAnswerListItem(BaseModel):
+    id: str
+    attempt_id: str
+    pack_id: str
+    pack_title: str
+    question: str
+    user_answer: str
+    correct_answer: str
+    explanation: str
+    created_at: str
+
+
+class WrongAnswerListResponse(BaseModel):
+    wrong_answers: list[WrongAnswerListItem]
+
+
+class StudyPlanRequest(BaseModel):
+    duration_days: int = Field(default=3, ge=3, le=7)
+
+
+class StudyPlanResponse(BaseModel):
+    id: str
+    pack_id: str
+    duration_days: int
+    plan: list[dict[str, Any]]
+    created_at: str

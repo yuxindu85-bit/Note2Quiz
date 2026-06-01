@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Download, Layers3, Loader2, RefreshCw } from 'lucide-react';
-import { exportUrl, generatePack, getPack, StudyPack } from '../services/api';
+import { Download, Layers3, Loader2, RefreshCw, Target } from 'lucide-react';
+import { createStudyPlan, exportUrl, generatePack, getPack, StudyPack, StudyPlan } from '../services/api';
 
-const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Original Text'] as const;
+const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Study Plan', 'Original Text'] as const;
 type Tab = (typeof tabs)[number];
 
 export default function Result() {
@@ -13,6 +13,9 @@ export default function Result() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const [planDays, setPlanDays] = useState(3);
+  const [studyPlan, setStudyPlan] = useState<StudyPlan | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -36,6 +39,20 @@ export default function Result() {
       setError(err instanceof Error ? err.message : 'Could not regenerate this pack.');
     } finally {
       setRegenerating(false);
+    }
+  }
+
+  async function handleCreatePlan(days = planDays) {
+    if (!pack) return;
+    setPlanLoading(true);
+    setError('');
+    try {
+      setPlanDays(days);
+      setStudyPlan(await createStudyPlan(pack.id, days));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create study plan.');
+    } finally {
+      setPlanLoading(false);
     }
   }
 
@@ -94,8 +111,46 @@ export default function Result() {
         </div>
       );
     }
+    if (activeTab === 'Study Plan') {
+      return (
+        <div className="stack">
+          <div className="plan-toolbar">
+            <div className="segmented">
+              {[3, 5, 7].map((days) => (
+                <button
+                  className={planDays === days ? 'active' : ''}
+                  key={days}
+                  type="button"
+                  onClick={() => void handleCreatePlan(days)}
+                >
+                  {days} days
+                </button>
+              ))}
+            </div>
+            <button className="secondary-button" type="button" disabled={planLoading} onClick={() => void handleCreatePlan()}>
+              {planLoading ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+              Generate plan
+            </button>
+          </div>
+          {!studyPlan && (
+            <EmptyPanel message="Choose a 3-day, 5-day, or 7-day plan to generate a study schedule." />
+          )}
+          {studyPlan?.plan.map((day) => (
+            <article className="item-card" key={day.day}>
+              <h3>Day {day.day}: {day.focus}</h3>
+              <ul>
+                {day.tasks.map((task) => (
+                  <li key={task}>{task}</li>
+                ))}
+              </ul>
+              <p className="answer">Goal: {day.goal}</p>
+            </article>
+          ))}
+        </div>
+      );
+    }
     return <pre className="original-text">{pack.original_text || 'No original text was stored.'}</pre>;
-  }, [activeTab, pack]);
+  }, [activeTab, pack, planDays, planLoading, studyPlan]);
 
   if (loading) {
     return (
@@ -128,6 +183,10 @@ export default function Result() {
           </p>
         </div>
         <div className="result-actions">
+          <Link className="primary-button" to={`/packs/${pack.id}/exam`}>
+            <Target size={18} />
+            Start Exam
+          </Link>
           <button className="secondary-button" type="button" disabled={regenerating} onClick={handleRegenerate}>
             {regenerating ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
             {regenerating ? 'Regenerating...' : 'Regenerate'}

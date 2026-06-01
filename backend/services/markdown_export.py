@@ -36,4 +36,6 @@ def pack_to_markdown(pack: dict[str, Any]) -> str:
         lines.append(f"- **{item.get('term', '')}**: {item.get('definition', '')}")
 
     lines.extend(["", "## Original Text", "", pack["original_text"]])
+    if pack.get("translation_text"):
+        lines.extend(["", f"## Translation ({pack.get('language', 'english').title()})", "", pack["translation_text"]])
     return "\n".join(lines)

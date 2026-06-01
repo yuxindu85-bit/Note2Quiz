@@ -13,10 +13,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from database import get_connection, init_db, row_to_pack
-from schemas import HealthResponse, StudyPack, StudyPackListResponse, UploadResponse
+from schemas import (
+    ExamAttemptListResponse,
+    ExamStartResponse,
+    ExamSubmitRequest,
+    ExamSubmitResponse,
+    HealthResponse,
+    StudyPack,
+    StudyPackListResponse,
+    StudyPlanRequest,
+    StudyPlanResponse,
+    UploadResponse,
+    WrongAnswerListResponse,
+)
 from services.ai_client import generate_study_pack
 from services.file_parser import SUPPORTED_EXTENSIONS, FileParseError, extract_text
 from services.markdown_export import pack_to_markdown, safe_markdown_filename
+from services.study_plan import mock_study_plan
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -171,6 +184,201 @@ def get_pack(pack_id: str) -> StudyPack:
     return StudyPack(**row_to_pack(row))
 
 
+@app.post("/api/packs/{pack_id}/exam/start", response_model=ExamStartResponse)
+def start_exam(pack_id: str) -> ExamStartResponse:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Study pack not found.")
+
+        pack = row_to_pack(row)
+        questions = pack["quiz"]
+        if not questions:
+            raise HTTPException(status_code=422, detail="This study pack has no quiz questions.")
+
+        attempt_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO exam_attempts (id, pack_id, total_questions, status)
+            VALUES (?, ?, ?, 'in_progress')
+            """,
+            (attempt_id, pack_id, len(questions)),
+        )
+
+    return ExamStartResponse(
+        attempt_id=attempt_id,
+        pack_id=pack_id,
+        title=pack["title"],
+        questions=questions,
+    )
+
+
+@app.post("/api/packs/{pack_id}/exam/submit", response_model=ExamSubmitResponse)
+def submit_exam(pack_id: str, payload: ExamSubmitRequest) -> ExamSubmitResponse:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Study pack not found.")
+
+        pack = row_to_pack(row)
+        questions = pack["quiz"]
+        answers_by_index = {answer.question_index: answer.answer for answer in payload.answers}
+        review: list[dict] = []
+        wrong_rows: list[tuple[str, str, str, str, str, str]] = []
+
+        for index, question in enumerate(questions):
+            correct_answer = str(question.get("answer", ""))
+            user_answer = str(answers_by_index.get(index, ""))
+            is_correct = user_answer == correct_answer
+            explanation = _question_explanation(question, correct_answer)
+            review_item = {
+                "question_index": index,
+                "question": question.get("question", ""),
+                "choices": question.get("choices", []),
+                "user_answer": user_answer,
+                "correct_answer": correct_answer,
+                "is_correct": is_correct,
+                "explanation": explanation,
+            }
+            review.append(review_item)
+            if not is_correct:
+                wrong_rows.append(
+                    (
+                        str(uuid.uuid4()),
+                        "",
+                        pack_id,
+                        review_item["question"],
+                        user_answer or "No answer",
+                        correct_answer,
+                        explanation,
+                    )
+                )
+
+        score = sum(1 for item in review if item["is_correct"])
+        attempt_id = payload.attempt_id or str(uuid.uuid4())
+        existing_attempt = conn.execute("SELECT id FROM exam_attempts WHERE id = ?", (attempt_id,)).fetchone()
+        if existing_attempt is None:
+            conn.execute(
+                """
+                INSERT INTO exam_attempts (id, pack_id, total_questions, status)
+                VALUES (?, ?, ?, 'in_progress')
+                """,
+                (attempt_id, pack_id, len(questions)),
+            )
+
+        conn.execute(
+            """
+            UPDATE exam_attempts
+            SET score = ?, total_questions = ?, duration_seconds = ?, answers_json = ?,
+                review_json = ?, status = 'completed', completed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                score,
+                len(questions),
+                payload.duration_seconds,
+                json.dumps([answer.model_dump() for answer in payload.answers]),
+                json.dumps(review),
+                attempt_id,
+            ),
+        )
+        conn.execute("DELETE FROM wrong_answers WHERE attempt_id = ?", (attempt_id,))
+        for wrong_row in wrong_rows:
+            conn.execute(
+                """
+                INSERT INTO wrong_answers
+                (id, attempt_id, pack_id, question, user_answer, correct_answer, explanation)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (wrong_row[0], attempt_id, *wrong_row[2:]),
+            )
+
+    return ExamSubmitResponse(
+        attempt_id=attempt_id,
+        pack_id=pack_id,
+        score=score,
+        total_questions=len(questions),
+        review=review,
+    )
+
+
+@app.get("/api/exam-attempts", response_model=ExamAttemptListResponse)
+def list_exam_attempts() -> ExamAttemptListResponse:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT exam_attempts.id, exam_attempts.pack_id, study_packs.title,
+                   exam_attempts.score, exam_attempts.total_questions,
+                   exam_attempts.duration_seconds, exam_attempts.status,
+                   exam_attempts.created_at, exam_attempts.completed_at
+            FROM exam_attempts
+            JOIN study_packs ON study_packs.id = exam_attempts.pack_id
+            ORDER BY exam_attempts.created_at DESC
+            """
+        ).fetchall()
+    return ExamAttemptListResponse(attempts=[dict(row) for row in rows])
+
+
+@app.get("/api/wrong-answers", response_model=WrongAnswerListResponse)
+def list_wrong_answers() -> WrongAnswerListResponse:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT wrong_answers.id, wrong_answers.attempt_id, wrong_answers.pack_id,
+                   study_packs.title AS pack_title, wrong_answers.question,
+                   wrong_answers.user_answer, wrong_answers.correct_answer,
+                   wrong_answers.explanation, wrong_answers.created_at
+            FROM wrong_answers
+            JOIN study_packs ON study_packs.id = wrong_answers.pack_id
+            ORDER BY wrong_answers.created_at DESC
+            """
+        ).fetchall()
+    return WrongAnswerListResponse(wrong_answers=[dict(row) for row in rows])
+
+
+@app.post("/api/packs/{pack_id}/study-plan", response_model=StudyPlanResponse)
+def create_study_plan(pack_id: str, payload: StudyPlanRequest) -> StudyPlanResponse:
+    if payload.duration_days not in {3, 5, 7}:
+        raise HTTPException(status_code=422, detail="Choose a 3-day, 5-day, or 7-day study plan.")
+
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Study pack not found.")
+        existing = conn.execute(
+            "SELECT * FROM study_plans WHERE pack_id = ? AND duration_days = ?",
+            (pack_id, payload.duration_days),
+        ).fetchone()
+        if existing is not None:
+            return StudyPlanResponse(
+                id=existing["id"],
+                pack_id=existing["pack_id"],
+                duration_days=existing["duration_days"],
+                plan=json.loads(existing["plan_json"]),
+                created_at=existing["created_at"],
+            )
+
+        pack = row_to_pack(row)
+        plan = mock_study_plan(pack, payload.duration_days)
+        plan_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO study_plans (id, pack_id, duration_days, plan_json)
+            VALUES (?, ?, ?, ?)
+            """,
+            (plan_id, pack_id, payload.duration_days, json.dumps(plan)),
+        )
+        plan_row = conn.execute("SELECT * FROM study_plans WHERE id = ?", (plan_id,)).fetchone()
+
+    return StudyPlanResponse(
+        id=plan_row["id"],
+        pack_id=plan_row["pack_id"],
+        duration_days=plan_row["duration_days"],
+        plan=json.loads(plan_row["plan_json"]),
+        created_at=plan_row["created_at"],
+    )
+
+
 @app.get("/api/export/{pack_id}", response_class=PlainTextResponse)
 def export_pack(pack_id: str) -> PlainTextResponse:
     with get_connection() as conn:
@@ -185,3 +393,10 @@ def export_pack(pack_id: str) -> PlainTextResponse:
         media_type="text/markdown",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _question_explanation(question: dict, correct_answer: str) -> str:
+    explanation = question.get("explanation")
+    if explanation:
+        return str(explanation)
+    return f"The correct answer is supported by the study pack: {correct_answer}"
