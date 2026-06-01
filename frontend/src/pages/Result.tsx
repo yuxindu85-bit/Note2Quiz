@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, Layers3, Loader2 } from 'lucide-react';
 import { exportUrl, getPack, StudyPack } from '../services/api';
 
 const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Original Text'] as const;
@@ -27,6 +27,9 @@ export default function Result() {
       return <p className="summary-text">{pack.summary}</p>;
     }
     if (activeTab === 'Quiz') {
+      if (pack.quiz.length === 0) {
+        return <EmptyPanel message="No quiz questions were generated for this pack." />;
+      }
       return (
         <div className="stack">
           {pack.quiz.map((item, index) => (
@@ -44,6 +47,9 @@ export default function Result() {
       );
     }
     if (activeTab === 'Flashcards') {
+      if (pack.flashcards.length === 0) {
+        return <EmptyPanel message="No flashcards were generated for this pack." />;
+      }
       return (
         <div className="card-grid">
           {pack.flashcards.map((card, index) => (
@@ -56,6 +62,9 @@ export default function Result() {
       );
     }
     if (activeTab === 'Key Terms') {
+      if (pack.key_terms.length === 0) {
+        return <EmptyPanel message="No key terms were generated for this pack." />;
+      }
       return (
         <div className="stack">
           {pack.key_terms.map((term, index) => (
@@ -67,11 +76,16 @@ export default function Result() {
         </div>
       );
     }
-    return <pre className="original-text">{pack.original_text}</pre>;
+    return <pre className="original-text">{pack.original_text || 'No original text was stored.'}</pre>;
   }, [activeTab, pack]);
 
   if (loading) {
-    return <div className="center-state"><Loader2 className="spin" /> Loading study pack...</div>;
+    return (
+      <div className="center-state">
+        <Loader2 className="spin" />
+        Loading study pack...
+      </div>
+    );
   }
 
   if (error || !pack) {
@@ -90,6 +104,10 @@ export default function Result() {
         <div>
           <p className="eyebrow">Study pack</p>
           <h1>{pack.title}</h1>
+          <p className="subtle-line">
+            Generated {new Date(pack.created_at).toLocaleString()} with {pack.quiz.length} quiz
+            questions and {pack.flashcards.length} flashcards.
+          </p>
         </div>
         <a className="secondary-button" href={exportUrl(pack.id)}>
           <Download size={18} />
@@ -110,5 +128,15 @@ export default function Result() {
       </div>
       <div className="tab-panel">{content}</div>
     </section>
+  );
+}
+
+function EmptyPanel({ message }: { message: string }) {
+  return (
+    <div className="empty-state compact">
+      <Layers3 size={30} />
+      <h2>Nothing here yet</h2>
+      <p>{message}</p>
+    </div>
   );
 }

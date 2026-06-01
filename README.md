@@ -1,39 +1,76 @@
-# Note2Quiz
+<p align="center">
+  <strong>Note2Quiz</strong>
+</p>
 
-Note2Quiz is an open-source student study assistant that turns lecture files into concise summaries, quizzes, flashcards, key terms, and Markdown exports.
+<p align="center">
+  Turn lecture files into summaries, quizzes, flashcards, key terms, and Markdown study packs.
+</p>
 
-It is designed to run locally with optional OpenAI-compatible AI providers. If no API key is configured, the backend returns realistic mock content so the app is still usable for demos and development.
+<p align="center">
+  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.9%2B-3776AB">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.115-009688">
+  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6">
+</p>
+
+## Product
+
+Note2Quiz is a local-first study assistant for students. Upload a PDF, DOCX, PPTX, or TXT lecture file and the app extracts readable text, generates a concise study summary, creates a 10-question multiple-choice quiz, builds 20 flashcards, defines key terms, saves everything in SQLite, and exports the result as Markdown.
+
+The project supports OpenAI-compatible APIs, but it does not require a paid AI account. If `AI_API_KEY` is missing, Note2Quiz automatically switches into demo mode with realistic mock study material.
 
 ## Features
 
-- Upload PDF, DOCX, PPTX, and TXT lecture files
-- Extract readable text from uploaded files
-- Generate a study summary, 10 multiple-choice questions, 20 flashcards, and key terms
-- Save study packs in SQLite
-- Browse previous study packs
-- View results in tabs: Summary, Quiz, Flashcards, Key Terms, Original Text
+- Upload PDF, DOCX, PPTX, and TXT files
+- Extract text with PyMuPDF, python-docx, python-pptx, or a built-in TXT parser
+- Generate summaries, quizzes, flashcards, and key terms
+- Save uploaded text and generated packs in SQLite
+- Browse pack history and reopen saved results
+- View outputs in tabs: Summary, Quiz, Flashcards, Key Terms, Original Text
 - Export any study pack as Markdown
-- Works without an API key through mock AI output
+- Run with OpenAI-compatible APIs or free demo mode
+- Clean responsive React dashboard UI
+- FastAPI backend with tests and schema initialization
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A["React + Vite UI"] --> B["FastAPI API"]
+  B --> C["File Parser Service"]
+  C --> D["Extracted Text"]
+  B --> E["AI Client"]
+  E --> F["OpenAI-compatible API"]
+  E --> G["Demo Mock Generator"]
+  B --> H["SQLite"]
+  H --> I["Study Pack History"]
+  B --> J["Markdown Export"]
+```
 
 ## Screenshots
 
-Add screenshots here after running the app locally:
+Add screenshots here after running the app:
 
-- Home upload page
-- Generated study pack result tabs
+- Home dashboard
+- Upload page
+- Study pack tabs
 - History page
 
 ## Tech Stack
 
-- Frontend: React, Vite, TypeScript
-- Backend: Python, FastAPI
-- Database: SQLite
-- File parsing: PyMuPDF, python-docx, python-pptx, built-in TXT parser
-- AI: OpenAI-compatible chat completions API
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, Vite, TypeScript, React Router, lucide-react |
+| Backend | Python, FastAPI, Pydantic |
+| Database | SQLite |
+| Parsing | PyMuPDF, python-docx, python-pptx, TXT |
+| AI | OpenAI-compatible `/chat/completions` |
+| Tests | pytest, FastAPI TestClient |
 
-## Setup
+## Installation
 
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
@@ -44,9 +81,9 @@ cp ../.env.example .env
 uvicorn main:app --reload --port 8000
 ```
 
-The backend will be available at `http://localhost:8000`.
+The API runs at `http://localhost:8000`.
 
-### 2. Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -54,50 +91,93 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`.
+The app runs at `http://localhost:5173`.
 
 ## Environment Variables
 
-Create a `.env` file from `.env.example`.
+Copy `.env.example` to `backend/.env` or project-root `.env`.
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `AI_API_KEY` | API key for an OpenAI-compatible provider | empty, uses mock output |
-| `AI_BASE_URL` | Provider base URL | `https://api.openai.com/v1` |
-| `AI_MODEL` | Chat model name | `gpt-4o-mini` |
-| `NOTE2QUIZ_DB_PATH` | SQLite database path | `backend/note2quiz.db` |
-| `NOTE2QUIZ_UPLOAD_DIR` | Upload storage directory | `backend/uploads` |
+| Variable | Required | Description | Default |
+| --- | --- | --- | --- |
+| `AI_API_KEY` | No | API key for an OpenAI-compatible provider. Empty enables demo mode. | empty |
+| `AI_BASE_URL` | No | Base URL for the provider. | `https://api.openai.com/v1` |
+| `AI_MODEL` | No | Chat model name. | `gpt-4o-mini` |
+| `NOTE2QUIZ_DB_PATH` | No | SQLite database path. | `backend/note2quiz.db` |
+| `NOTE2QUIZ_UPLOAD_DIR` | No | Upload storage path. | `backend/uploads` |
 
-## Supported AI Providers
+## AI Provider Setup
 
-Any provider that supports an OpenAI-compatible `/chat/completions` endpoint should work. Examples include:
+Note2Quiz works with providers that expose an OpenAI-compatible chat completions endpoint.
+
+Examples:
 
 - OpenAI
-- Azure OpenAI compatible deployments
 - OpenRouter
-- Local OpenAI-compatible servers such as Ollama-compatible gateways or LM Studio
+- DeepSeek-compatible gateways
+- Gemini-compatible gateways that expose OpenAI-style routes
+- LM Studio or other local OpenAI-compatible servers
 
-No API key is hardcoded. Paid services are optional and must be configured by the user.
-
-## Tests
+Example:
 
 ```bash
-cd backend
-pytest
+AI_API_KEY=sk-your-key
+AI_BASE_URL=https://api.openai.com/v1
+AI_MODEL=gpt-4o-mini
 ```
+
+No API key is hardcoded. Users bring their own provider credentials.
+
+## Demo Mode
+
+If `AI_API_KEY` is not set, the backend automatically uses a local mock generator. Demo mode still exercises the full product flow:
+
+1. Upload a file
+2. Extract text
+3. Generate a realistic summary
+4. Create 10 quiz questions
+5. Create 20 flashcards
+6. Create key terms
+7. Save the pack in SQLite
+8. Export Markdown
+
+This makes the project easy to evaluate without spending money.
+
+## API
+
+| Method | Route | Description |
+| --- | --- | --- |
+| `POST` | `/api/upload` | Upload and parse a lecture file |
+| `POST` | `/api/generate/{file_id}` | Generate or return the study pack for an upload |
+| `GET` | `/api/packs` | List saved study packs |
+| `GET` | `/api/packs/{pack_id}` | Get one study pack |
+| `GET` | `/api/export/{pack_id}` | Export one pack as Markdown |
+
+## Verification
+
+```bash
+python -m compileall backend
+cd backend && pytest
+cd frontend && npm run build
+```
+
+## Recommended GitHub Topics
+
+`ai`, `education`, `study-assistant`, `quiz-generator`, `flashcards`, `react`, `fastapi`, `openai`, `deepseek`, `gemini`
 
 ## Roadmap
 
-- User accounts and private libraries
-- More export formats, including PDF and Anki CSV
-- Better chunking for very large lecture decks
-- Streaming generation progress
-- Tagging and search across saved packs
-- Optional local model presets
+- Add Anki CSV export
+- Add PDF export for study packs
+- Add local chunking for very large lecture files
+- Add streaming generation progress
+- Add search and tags for saved packs
+- Add Docker Compose for one-command startup
+- Add GitHub Actions CI
+- Add optional user accounts for hosted deployments
 
 ## Contributing
 
-Contributions are welcome. Please keep changes focused, add tests for backend behavior, and update the README when setup or user-facing behavior changes.
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), keep changes focused, add tests for backend behavior, and include screenshots for meaningful UI changes.
 
 ## License
 

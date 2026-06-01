@@ -1,6 +1,6 @@
 :root {
   color: #17202a;
-  background: #f7f8fb;
+  background: #f5f7f8;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -26,6 +26,9 @@ input {
 }
 
 .app-shell {
+  background:
+    linear-gradient(180deg, rgba(231, 239, 239, 0.85), rgba(245, 247, 248, 0) 360px),
+    #f5f7f8;
   min-height: 100vh;
 }
 
@@ -39,6 +42,7 @@ input {
   position: sticky;
   top: 0;
   z-index: 10;
+  backdrop-filter: blur(18px);
 }
 
 .brand,
@@ -73,13 +77,24 @@ input {
   color: #17202a;
 }
 
+.topbar nav a.active {
+  background: #dcebea;
+  color: #17484b;
+}
+
 main {
   margin: 0 auto;
   max-width: 1180px;
   padding: clamp(28px, 6vw, 72px) clamp(18px, 4vw, 48px);
 }
 
-.home-grid {
+.home-page,
+.upload-page {
+  display: grid;
+  gap: 34px;
+}
+
+.hero-grid {
   align-items: center;
   display: grid;
   gap: 34px;
@@ -96,14 +111,19 @@ main {
 }
 
 .intro h1 {
-  font-size: clamp(2.4rem, 7vw, 5rem);
+  font-size: clamp(2.35rem, 6vw, 4.8rem);
   max-width: 760px;
 }
 
-.intro p {
+.intro p,
+.page-heading p,
+.upload-panel-header p {
   color: #526173;
-  font-size: 1.12rem;
   line-height: 1.7;
+}
+
+.intro p {
+  font-size: 1.12rem;
   max-width: 650px;
 }
 
@@ -132,6 +152,44 @@ main {
   padding: 8px 14px;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.metric-card {
+  background: #ffffff;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+
+.metric-card svg {
+  color: #246b6f;
+}
+
+.metric-card h2,
+.upload-panel-header h2 {
+  color: #17202a;
+  font-size: 1rem;
+  margin: 0;
+}
+
+.metric-card p,
+.upload-panel-header p {
+  margin: 0;
+}
+
 .upload-panel {
   background: #ffffff;
   border: 1px solid #e1e7ef;
@@ -140,6 +198,28 @@ main {
   display: grid;
   gap: 16px;
   padding: 22px;
+}
+
+.upload-page {
+  margin: 0 auto;
+  max-width: 760px;
+}
+
+.upload-panel-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+}
+
+.icon-chip {
+  align-items: center;
+  background: #e8f1ef;
+  border-radius: 8px;
+  color: #246b6f;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
 }
 
 .dropzone {
@@ -157,8 +237,21 @@ main {
   text-align: center;
 }
 
+.dropzone:hover {
+  background: #f2f7f7;
+  border-color: #5d9a9d;
+}
+
 .dropzone span {
   color: #657589;
+}
+
+.file-support {
+  align-items: center;
+  color: #657589;
+  display: flex;
+  gap: 8px;
+  line-height: 1.5;
 }
 
 .primary-button,
@@ -177,6 +270,10 @@ main {
   color: #ffffff;
 }
 
+.primary-button:hover {
+  background: #1d5d61;
+}
+
 .primary-button:disabled {
   cursor: not-allowed;
   opacity: 0.65;
@@ -188,6 +285,10 @@ main {
   color: #243442;
 }
 
+.secondary-button:hover {
+  background: #f4f7fa;
+}
+
 .error {
   background: #fff0f0;
   border: 1px solid #ffd0d0;
@@ -195,6 +296,12 @@ main {
   color: #a12626;
   margin: 0;
   padding: 12px;
+}
+
+.error-row {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
 }
 
 .spin {
@@ -223,6 +330,12 @@ main {
 .result-header h1,
 .page-heading h1 {
   font-size: clamp(2rem, 4vw, 3.5rem);
+}
+
+.subtle-line {
+  color: #667789;
+  line-height: 1.6;
+  margin: 12px 0 0;
 }
 
 .tabs {
@@ -339,6 +452,11 @@ main {
   text-align: center;
 }
 
+.empty-state.compact {
+  border: 0;
+  padding: 28px 18px;
+}
+
 .empty-state {
   background: #ffffff;
 }
@@ -377,13 +495,17 @@ main {
 }
 
 @media (max-width: 760px) {
-  .home-grid,
+  .hero-grid,
   .result-header {
     grid-template-columns: 1fr;
   }
 
-  .home-grid {
+  .hero-grid {
     align-items: stretch;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
   }
 
   .result-header {
@@ -395,5 +517,10 @@ main {
     align-items: flex-start;
     gap: 12px;
     flex-direction: column;
+  }
+
+  .topbar nav {
+    overflow-x: auto;
+    width: 100%;
   }
 }

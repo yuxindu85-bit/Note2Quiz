@@ -3,6 +3,7 @@ import os
 import shutil
 import uuid
 from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import httpx
@@ -12,9 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
 from database import get_connection, init_db, row_to_pack
+from schemas import StudyPack, StudyPackListResponse, UploadResponse
 from services.ai_client import generate_study_pack
 from services.file_parser import SUPPORTED_EXTENSIONS, FileParseError, extract_text
-from services.markdown_export import pack_to_markdown
+from services.markdown_export import pack_to_markdown, safe_markdown_filename
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -31,7 +33,7 @@ def setup_app_storage() -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_app_storage()
     yield
 
@@ -47,8 +49,8 @@ app.add_middleware(
 )
 
 
-@app.post("/api/upload")
-async def upload_file(file: UploadFile = File(...)) -> dict:
+@app.post("/api/upload", response_model=UploadResponse)
+async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
     extension = Path(file.filename or "").suffix.lower()
     if extension not in SUPPORTED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Upload a PDF, DOCX, PPTX, or TXT file.")
@@ -58,6 +60,7 @@ async def upload_file(file: UploadFile = File(...)) -> dict:
     stored_path = UPLOAD_DIR / f"{file_id}_{safe_name}"
 
     try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         with stored_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         extracted_text = extract_text(stored_path)
@@ -77,21 +80,24 @@ async def upload_file(file: UploadFile = File(...)) -> dict:
             (file_id, safe_name, str(stored_path), extracted_text),
         )
 
-    return {
-        "file_id": file_id,
-        "filename": safe_name,
-        "text_length": len(extracted_text),
-        "preview": extracted_text[:500],
-    }
+    return UploadResponse(
+        file_id=file_id,
+        filename=safe_name,
+        text_length=len(extracted_text),
+        preview=extracted_text[:500],
+    )
 
 
-@app.post("/api/generate/{file_id}")
-async def generate_pack(file_id: str) -> dict:
+@app.post("/api/generate/{file_id}", response_model=StudyPack)
+async def generate_pack(file_id: str) -> StudyPack:
     with get_connection() as conn:
         file_row = conn.execute("SELECT * FROM uploaded_files WHERE id = ?", (file_id,)).fetchone()
+        existing_pack = conn.execute("SELECT * FROM study_packs WHERE file_id = ?", (file_id,)).fetchone()
 
     if file_row is None:
         raise HTTPException(status_code=404, detail="Uploaded file not found.")
+    if existing_pack is not None:
+        return StudyPack(**row_to_pack(existing_pack))
 
     try:
         generated = await generate_study_pack(file_row["extracted_text"], file_row["original_filename"])
@@ -122,11 +128,11 @@ async def generate_pack(file_id: str) -> dict:
         )
         row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
 
-    return row_to_pack(row)
+    return StudyPack(**row_to_pack(row))
 
 
-@app.get("/api/packs")
-def list_packs() -> dict:
+@app.get("/api/packs", response_model=StudyPackListResponse)
+def list_packs() -> StudyPackListResponse:
     with get_connection() as conn:
         rows = conn.execute(
             """
@@ -135,16 +141,16 @@ def list_packs() -> dict:
             ORDER BY created_at DESC
             """
         ).fetchall()
-    return {"packs": [dict(row) for row in rows]}
+    return StudyPackListResponse(packs=[dict(row) for row in rows])
 
 
-@app.get("/api/packs/{pack_id}")
-def get_pack(pack_id: str) -> dict:
+@app.get("/api/packs/{pack_id}", response_model=StudyPack)
+def get_pack(pack_id: str) -> StudyPack:
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Study pack not found.")
-    return row_to_pack(row)
+    return StudyPack(**row_to_pack(row))
 
 
 @app.get("/api/export/{pack_id}", response_class=PlainTextResponse)
@@ -155,7 +161,7 @@ def export_pack(pack_id: str) -> PlainTextResponse:
         raise HTTPException(status_code=404, detail="Study pack not found.")
 
     markdown = pack_to_markdown(row_to_pack(row))
-    filename = f"{row['title'].replace(' ', '_')}.md"
+    filename = safe_markdown_filename(row["title"])
     return PlainTextResponse(
         markdown,
         media_type="text/markdown",

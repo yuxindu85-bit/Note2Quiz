@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Any
 
 import httpx
@@ -40,7 +41,7 @@ async def generate_study_pack(text: str, title: str) -> dict[str, Any]:
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
 
-    return normalize_pack(json.loads(content), title, text)
+    return normalize_pack(_parse_json_object(content), title, text)
 
 
 def _build_prompt(title: str, text: str) -> str:
@@ -71,6 +72,20 @@ def normalize_pack(data: dict[str, Any], fallback_title: str, original_text: str
     }
 
 
+def _parse_json_object(content: str) -> dict[str, Any]:
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, flags=re.DOTALL)
+        if not match:
+            raise
+        parsed = json.loads(match.group(0))
+
+    if not isinstance(parsed, dict):
+        raise ValueError("AI response must be a JSON object.")
+    return parsed
+
+
 def _list_of_dicts(value: Any, expected: int) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
@@ -78,7 +93,11 @@ def _list_of_dicts(value: Any, expected: int) -> list[dict[str, Any]]:
     return cleaned[:expected]
 
 
-def _with_fallback(items: list[dict[str, Any]], fallback: list[dict[str, Any]], expected: int) -> list[dict[str, Any]]:
+def _with_fallback(
+    items: list[dict[str, Any]],
+    fallback: list[dict[str, Any]],
+    expected: int,
+) -> list[dict[str, Any]]:
     merged = items + fallback
     return merged[:expected]
 
@@ -93,10 +112,11 @@ def mock_study_pack(title: str, text: str) -> dict[str, Any]:
             break
 
     theme = candidates[0].title() if candidates else "Lecture"
+    summary_topic = ", ".join(candidate.title() for candidate in candidates[:4]) or "core course concepts"
     quiz = [
         {
-            "question": f"Mock question {index}: Which idea is emphasized in {title}?",
-            "choices": [theme, "Unrelated detail", "Formatting only", "Page numbering"],
+            "question": f"Which study focus is most relevant to {title}?",
+            "choices": [theme, "Citation formatting", "Page numbering", "Slide animation timing"],
             "answer": theme,
         }
         for index in range(1, 11)
@@ -119,8 +139,8 @@ def mock_study_pack(title: str, text: str) -> dict[str, Any]:
     return {
         "title": title,
         "summary": (
-            "Mock summary: this study pack was generated without an AI API key. "
-            "The uploaded text was parsed successfully and can be reviewed in the Original Text tab."
+            f"Demo summary: this pack highlights {summary_topic}. The upload was parsed successfully, "
+            "and Note2Quiz generated practice material locally because AI_API_KEY is not set."
         ),
         "quiz": quiz,
         "flashcards": flashcards,

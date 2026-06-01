@@ -1,6 +1,11 @@
 from typing import Any
 
 
+def safe_markdown_filename(title: str) -> str:
+    cleaned = "".join(character if character.isalnum() or character in ("-", "_") else "_" for character in title)
+    return f"{cleaned.strip('_') or 'study_pack'}.md"
+
+
 def pack_to_markdown(pack: dict[str, Any]) -> str:
     lines = [
         f"# {pack['title']}",

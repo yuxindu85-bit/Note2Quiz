@@ -21,11 +21,20 @@ def get_connection() -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def init_db() -> None:
     with get_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS uploaded_files (
@@ -53,6 +62,41 @@ def init_db() -> None:
             )
             """
         )
+        _apply_migration(
+            conn,
+            1,
+            """
+            CREATE INDEX IF NOT EXISTS idx_uploaded_files_created_at
+            ON uploaded_files(created_at)
+            """,
+        )
+        _apply_migration(
+            conn,
+            2,
+            """
+            CREATE INDEX IF NOT EXISTS idx_study_packs_created_at
+            ON study_packs(created_at)
+            """,
+        )
+        _apply_migration(
+            conn,
+            3,
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_study_packs_file_id_unique
+            ON study_packs(file_id)
+            """,
+        )
+
+
+def _apply_migration(conn: sqlite3.Connection, version: int, sql: str) -> None:
+    exists = conn.execute(
+        "SELECT 1 FROM schema_migrations WHERE version = ?",
+        (version,),
+    ).fetchone()
+    if exists:
+        return
+    conn.execute(sql)
+    conn.execute("INSERT INTO schema_migrations (version) VALUES (?)", (version,))
 
 
 def row_to_pack(row: sqlite3.Row) -> dict[str, Any]:
