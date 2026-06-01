@@ -1,10 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Download, Layers3, Loader2, RefreshCw, Target } from 'lucide-react';
-import { createStudyPlan, exportUrl, generatePack, getPack, StudyPack, StudyPlan } from '../services/api';
+import {
+  createStudyPlan,
+  exportUrl,
+  generatePack,
+  getPack,
+  QuizOrder,
+  StudyLanguage,
+  StudyPack,
+  StudyPlan
+} from '../services/api';
 
 const tabs = ['Summary', 'Quiz', 'Flashcards', 'Key Terms', 'Study Plan', 'Original Text'] as const;
 type Tab = (typeof tabs)[number];
+const languageLabels: Record<string, string> = {
+  english: 'English',
+  chinese: '中文',
+  french: 'Français',
+  russian: 'Русский',
+  spanish: 'Español'
+};
 
 export default function Result() {
   const { packId } = useParams();
@@ -31,7 +47,12 @@ export default function Result() {
     setRegenerating(true);
     setError('');
     try {
-      const regenerated = await generatePack(pack.file_id, true);
+      const regenerated = await generatePack(pack.file_id, {
+        force: true,
+        key_terms_count: pack.key_terms_count,
+        quiz_order: pack.quiz_order as QuizOrder,
+        language: pack.language as StudyLanguage
+      });
       setPack(regenerated);
       setActiveTab('Summary');
       navigate(`/packs/${regenerated.id}`, { replace: true });
@@ -149,7 +170,20 @@ export default function Result() {
         </div>
       );
     }
-    return <pre className="original-text">{pack.original_text || 'No original text was stored.'}</pre>;
+    return (
+      <div className="source-stack">
+        <section>
+          <h2>Original text</h2>
+          <pre className="original-text">{pack.original_text || 'No original text was stored.'}</pre>
+        </section>
+        {pack.translation_text && (
+          <section className="translation-panel">
+            <h2>Translation · {languageLabels[pack.language] ?? pack.language}</h2>
+            <pre className="original-text">{pack.translation_text}</pre>
+          </section>
+        )}
+      </div>
+    );
   }, [activeTab, pack, planDays, planLoading, studyPlan]);
 
   if (loading) {
@@ -181,6 +215,11 @@ export default function Result() {
             Generated {new Date(pack.created_at).toLocaleString()} with {pack.quiz.length} quiz
             questions and {pack.flashcards.length} flashcards.
           </p>
+          <div className="metadata-row">
+            <span>{pack.key_terms.length} key terms</span>
+            <span>{pack.quiz_order === 'random' ? 'Random quiz order' : 'Most important first'}</span>
+            <span>{languageLabels[pack.language] ?? pack.language}</span>
+          </div>
         </div>
         <div className="result-actions">
           <Link className="primary-button" to={`/packs/${pack.id}/exam`}>

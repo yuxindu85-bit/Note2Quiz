@@ -1,16 +1,32 @@
 import { FormEvent, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, FileText, FileUp, Loader2, Play, Sparkles } from 'lucide-react';
-import { generatePack, uploadFile } from '../services/api';
+import { generatePack, QuizOrder, StudyLanguage, uploadFile } from '../services/api';
 
 const acceptedTypes = '.pdf,.docx,.pptx,.txt';
+const languages: { label: string; value: StudyLanguage }[] = [
+  { label: 'English', value: 'english' },
+  { label: '中文', value: 'chinese' },
+  { label: 'Français', value: 'french' },
+  { label: 'Русский', value: 'russian' },
+  { label: 'Español', value: 'spanish' }
+];
 
 export default function UploadBox() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [keyTermsCount, setKeyTermsCount] = useState(10);
+  const [quizOrder, setQuizOrder] = useState<QuizOrder>('ranked');
+  const [language, setLanguage] = useState<StudyLanguage>('english');
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
+  const generationOptions = {
+    key_terms_count: keyTermsCount,
+    quiz_order: quizOrder,
+    language
+  };
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -23,7 +39,7 @@ export default function UploadBox() {
     setError('');
     try {
       const upload = await uploadFile(file);
-      const pack = await generatePack(upload.file_id);
+      const pack = await generatePack(upload.file_id, generationOptions);
       navigate(`/packs/${pack.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -47,7 +63,7 @@ export default function UploadBox() {
     setError('');
     try {
       const upload = await uploadFile(demoFile);
-      const pack = await generatePack(upload.file_id);
+      const pack = await generatePack(upload.file_id, generationOptions);
       navigate(`/packs/${pack.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Demo generation failed.');
@@ -85,6 +101,52 @@ export default function UploadBox() {
       <div className="file-support">
         <FileText size={16} />
         <span>Readable text is extracted and stored locally in SQLite.</span>
+      </div>
+
+      <div className="settings-panel" aria-label="Study generation settings">
+        <div className="settings-heading">
+          <strong>Study settings</strong>
+          <span>Control how much material you get before generating.</span>
+        </div>
+        <label className="field">
+          <span>Key terms</span>
+          <input
+            max={30}
+            min={3}
+            type="number"
+            value={keyTermsCount}
+            onChange={(event) => setKeyTermsCount(Number(event.target.value))}
+          />
+        </label>
+        <div className="field">
+          <span>Quiz order</span>
+          <div className="segmented full-width" role="group" aria-label="Quiz order">
+            <button
+              className={quizOrder === 'ranked' ? 'active' : ''}
+              type="button"
+              onClick={() => setQuizOrder('ranked')}
+            >
+              Most important first
+            </button>
+            <button
+              className={quizOrder === 'random' ? 'active' : ''}
+              type="button"
+              onClick={() => setQuizOrder('random')}
+            >
+              Random
+            </button>
+          </div>
+        </div>
+        <label className="field">
+          <span>Output language</span>
+          <select value={language} onChange={(event) => setLanguage(event.target.value as StudyLanguage)}>
+            {languages.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {error && <p className="error">{error}</p>}

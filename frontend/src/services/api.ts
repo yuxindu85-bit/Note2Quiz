@@ -32,6 +32,16 @@ export type StudyPack = {
   created_at: string;
 };
 
+export type StudyLanguage = 'english' | 'chinese' | 'french' | 'russian' | 'spanish';
+export type QuizOrder = 'ranked' | 'random';
+
+export type GenerateOptions = {
+  key_terms_count?: number;
+  quiz_order?: QuizOrder;
+  language?: StudyLanguage;
+  force?: boolean;
+};
+
 export type PackListItem = {
   id: string;
   file_id: string;
@@ -129,9 +139,16 @@ export async function getHealth(): Promise<ApiHealth> {
   return parseResponse(await fetch(`${API_BASE}/api/health`));
 }
 
-export async function generatePack(fileId: string, force = false): Promise<StudyPack> {
-  const suffix = force ? '?force=true' : '';
-  return parseResponse(await fetch(`${API_BASE}/api/generate/${fileId}${suffix}`, { method: 'POST' }));
+export async function generatePack(fileId: string, options: GenerateOptions | boolean = {}): Promise<StudyPack> {
+  const normalized = typeof options === 'boolean' ? { force: options } : options;
+  const suffix = normalized.force ? '?force=true' : '';
+  return parseResponse(
+    await fetch(`${API_BASE}/api/generate/${fileId}${suffix}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalized)
+    })
+  );
 }
 
 export async function startExam(packId: string): Promise<ExamStart> {

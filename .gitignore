@@ -7,6 +7,7 @@ __pycache__/
 venv/
 node_modules/
 dist/
+*.tsbuildinfo
 build/
 backend/uploads/*
 !backend/uploads/.gitkeep

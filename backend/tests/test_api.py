@@ -46,6 +46,49 @@ def test_upload_generate_list_and_export(tmp_path: Path, monkeypatch) -> None:
     assert "# lecture.txt" in export_response.text
 
 
+def test_generate_accepts_study_options(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("NOTE2QUIZ_DB_PATH", str(tmp_path / "note2quiz.db"))
+    monkeypatch.setenv("NOTE2QUIZ_UPLOAD_DIR", str(tmp_path / "uploads"))
+    monkeypatch.delenv("AI_API_KEY", raising=False)
+
+    main = importlib.import_module("main")
+    main.UPLOAD_DIR = tmp_path / "uploads"
+    main.setup_app_storage()
+
+    client = TestClient(main.app)
+    upload_response = client.post(
+        "/api/upload",
+        files={
+            "file": (
+                "economics.txt",
+                (
+                    b"Pricing strategy uses consumer data to estimate willingness to pay. "
+                    b"Companies compare market demand, discounts, coupons, airline tickets, and competition."
+                ),
+                "text/plain",
+            )
+        },
+    )
+    file_id = upload_response.json()["file_id"]
+
+    response = client.post(
+        f"/api/generate/{file_id}",
+        json={"key_terms_count": 5, "quiz_order": "random", "language": "chinese"},
+    )
+
+    assert response.status_code == 200
+    pack = response.json()
+    assert pack["key_terms_count"] == 5
+    assert pack["quiz_order"] == "random"
+    assert pack["language"] == "chinese"
+    assert len(pack["key_terms"]) == 5
+    assert "Demo translation preview" in pack["translation_text"]
+
+    export_response = client.get(f"/api/export/{pack['id']}")
+    assert export_response.status_code == 200
+    assert "## Translation (Chinese)" in export_response.text
+
+
 def test_exam_wrong_answers_and_study_plan(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("NOTE2QUIZ_DB_PATH", str(tmp_path / "note2quiz.db"))
     monkeypatch.setenv("NOTE2QUIZ_UPLOAD_DIR", str(tmp_path / "uploads"))

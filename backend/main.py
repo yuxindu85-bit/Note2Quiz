@@ -8,7 +8,7 @@ from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
@@ -18,6 +18,7 @@ from schemas import (
     ExamStartResponse,
     ExamSubmitRequest,
     ExamSubmitResponse,
+    GenerateOptions,
     HealthResponse,
     StudyPack,
     StudyPackListResponse,
@@ -118,18 +119,29 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
 
 
 @app.post("/api/generate/{file_id}", response_model=StudyPack)
-async def generate_pack(file_id: str, force: bool = False) -> StudyPack:
+async def generate_pack(
+    file_id: str,
+    options: GenerateOptions = Body(default_factory=GenerateOptions),
+    force: bool = False,
+) -> StudyPack:
+    force_generation = force or options.force
     with get_connection() as conn:
         file_row = conn.execute("SELECT * FROM uploaded_files WHERE id = ?", (file_id,)).fetchone()
         existing_pack = conn.execute("SELECT * FROM study_packs WHERE file_id = ?", (file_id,)).fetchone()
 
     if file_row is None:
         raise HTTPException(status_code=404, detail="Uploaded file not found.")
-    if existing_pack is not None and not force:
+    if existing_pack is not None and not force_generation:
         return StudyPack(**row_to_pack(existing_pack))
 
     try:
-        generated = await generate_study_pack(file_row["extracted_text"], file_row["original_filename"])
+        generated = await generate_study_pack(
+            file_row["extracted_text"],
+            file_row["original_filename"],
+            key_terms_count=options.key_terms_count,
+            quiz_order=options.quiz_order,
+            language=options.language,
+        )
     except httpx.HTTPStatusError as exc:
         detail = exc.response.text[:400] if exc.response is not None else "AI provider error."
         raise HTTPException(status_code=502, detail=f"AI provider error: {detail}") from exc
@@ -138,13 +150,16 @@ async def generate_pack(file_id: str, force: bool = False) -> StudyPack:
 
     pack_id = str(uuid.uuid4())
     with get_connection() as conn:
-        if force:
+        if force_generation:
             conn.execute("DELETE FROM study_packs WHERE file_id = ?", (file_id,))
         conn.execute(
             """
             INSERT INTO study_packs
-            (id, file_id, title, summary, quiz_json, flashcards_json, key_terms_json, original_text)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (
+                id, file_id, title, summary, quiz_json, flashcards_json, key_terms_json,
+                original_text, translation_text, language, key_terms_count, quiz_order
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 pack_id,
@@ -155,6 +170,10 @@ async def generate_pack(file_id: str, force: bool = False) -> StudyPack:
                 json.dumps(generated["flashcards"]),
                 json.dumps(generated["key_terms"]),
                 generated["original_text"],
+                generated["translation_text"],
+                generated["language"],
+                generated["key_terms_count"],
+                generated["quiz_order"],
             ),
         )
         row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()

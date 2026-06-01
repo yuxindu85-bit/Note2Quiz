@@ -3,8 +3,8 @@ from pathlib import Path
 import pytest
 
 from services.file_parser import FileParseError, extract_text
-from services.markdown_export import safe_markdown_filename
 from services.ai_client import mock_study_pack
+from services.markdown_export import safe_markdown_filename
 
 
 def test_extract_txt(tmp_path: Path) -> None:
@@ -45,3 +45,18 @@ def test_mock_study_pack_uses_source_text_variety() -> None:
     assert all(len(item["choices"]) == 4 for item in pack["quiz"])
     assert all(item["answer"] in item["choices"] for item in pack["quiz"])
     assert any(term["term"] == "Photosynthesis" for term in pack["key_terms"])
+
+
+def test_mock_study_pack_honors_generation_options() -> None:
+    text = (
+        "Pricing strategy uses consumer data to estimate willingness to pay. "
+        "Companies compare market demand, discounts, coupons, airline tickets, and competition."
+    )
+
+    pack = mock_study_pack("economics.txt", text, key_terms_count=5, quiz_order="random", language="spanish")
+
+    assert pack["key_terms_count"] == 5
+    assert pack["quiz_order"] == "random"
+    assert pack["language"] == "spanish"
+    assert len(pack["key_terms"]) == 5
+    assert "Demo translation preview" in pack["translation_text"]
