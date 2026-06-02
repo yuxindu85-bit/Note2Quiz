@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  Turn lecture files into summaries, quizzes, flashcards, key terms, and Markdown study packs.
+  Turn lecture files into summaries, quizzes, exams, flashcards, study plans, favorites, and wrong-answer reviews.
 </p>
 
 <p align="center">
@@ -26,21 +26,23 @@ The project supports OpenAI-compatible APIs, but it does not require a paid AI a
 - Extract text with PyMuPDF, python-docx, python-pptx, or a built-in TXT parser
 - Generate summaries, quizzes, flashcards, and key terms
 - Choose how many quiz questions to generate
-- Include explanations for quiz answers
+- Include explanations, topics, and difficulty labels for quiz answers
 - Choose how many key terms to generate, ordered from most important downward
 - Generate quizzes in importance order or randomized order
 - Generate study material in English, Chinese, French, Russian, or Spanish
 - Append translated source text after the original extracted text
 - Save uploaded text and generated packs in SQLite
 - Browse pack history and reopen saved results
-- View outputs in tabs: Summary, Quiz, Flashcards, Key Terms, Original Text
-- Generate 3-day, 5-day, and 7-day study plans
+- View outputs in tabs: Summary, Quiz, Flashcards, Key Terms, Study Plan, Favorites, Original Text, Export
+- Generate 1-day, 3-day, 5-day, and 7-day study plans
+- Favorite quiz explanations, flashcards, and key terms into a review box
+- Practice flashcards with "I know this" and "Need review" tracking
 - Start Exam Mode from any generated quiz
 - Answer one question at a time with progress and optional timer
 - Save exam attempts and final scores
 - Save wrong answers for targeted review
 - Practice wrong questions again from the Wrong Answers page
-- Export any study pack as Markdown
+- Export any study pack as Markdown, JSON, or Anki CSV
 - Run with OpenAI-compatible APIs or free demo mode
 - Clean responsive React dashboard UI
 - FastAPI backend with tests and schema initialization
@@ -64,16 +66,25 @@ flowchart LR
 
 ## Screenshots
 
-Add screenshots here after running the app:
+### Home
 
-- Home dashboard
-- Upload page
-- Study pack tabs
-- History page
-- Exam mode
-- Exam review
-- Wrong answers page
-- Study plan tab
+![Home dashboard](screenshots/home.png)
+
+### Upload
+
+![Upload page](screenshots/upload.png)
+
+### Study Pack
+
+![Study pack page](screenshots/study-pack.png)
+
+### Exam Mode
+
+![Exam mode](screenshots/exam-mode.png)
+
+### Wrong Answers
+
+![Wrong answers](screenshots/wrong-answers.png)
 
 ## Tech Stack
 
@@ -122,6 +133,9 @@ Copy `.env.example` to `backend/.env` or project-root `.env`.
 | `AI_MODEL` | No | Chat model name. | `gpt-4o-mini` |
 | `NOTE2QUIZ_DB_PATH` | No | SQLite database path. | `backend/note2quiz.db` |
 | `NOTE2QUIZ_UPLOAD_DIR` | No | Upload storage path. | `backend/uploads` |
+| `NOTE2QUIZ_MAX_UPLOAD_BYTES` | No | Max uploaded file size. | `26214400` |
+| `NOTE2QUIZ_MIN_EXTRACTED_CHARS` | No | Minimum extracted text length. | `40` |
+| `FRONTEND_ORIGIN` | No | Extra CORS origin for deployed frontend. | `http://localhost:5173` |
 
 ## AI Provider Setup
 
@@ -179,13 +193,27 @@ Wrong answers from completed exams are saved automatically. The Wrong Answers pa
 - user answer
 - correct answer
 - explanation
+- weak topic
+- review count
 - source study pack
 
 Students can jump back into Exam Mode to practice missed material again.
 
+## Favorites and Flashcard Practice
+
+Students can favorite quiz explanations, flashcards, and key terms into a focused review box. Flashcards include a simple practice mode with "I know this" and "Need review" actions. Flashcards can also be exported as Anki CSV.
+
 ## Study Plan Generator
 
-The Study Plan tab creates 3-day, 5-day, or 7-day plans from the current study pack. In demo mode, plans are generated locally from summary, flashcards, quiz items, and key terms. With an AI provider configured, this area can be extended to request richer provider-generated plans.
+The Study Plan tab creates 1-day cram, 3-day, 5-day, or 7-day plans from the current study pack. In demo mode, plans are generated locally from summary, flashcards, quiz items, wrong-answer review, and key terms. With an AI provider configured, this area can be extended to request richer provider-generated plans.
+
+## Privacy
+
+- No API keys are committed.
+- Users provide their own AI provider credentials through environment variables.
+- Uploaded files are stored locally in `backend/uploads`.
+- Generated study packs, exam attempts, favorites, and wrong answers are stored locally in SQLite.
+- Mock mode is available without paid services.
 
 ## API
 
@@ -196,11 +224,38 @@ The Study Plan tab creates 3-day, 5-day, or 7-day plans from the current study p
 | `GET` | `/api/packs` | List saved study packs |
 | `GET` | `/api/packs/{pack_id}` | Get one study pack |
 | `GET` | `/api/export/{pack_id}` | Export one pack as Markdown |
+| `GET` | `/api/export/{pack_id}/markdown` | Export Markdown |
+| `GET` | `/api/export/{pack_id}/json` | Export JSON |
+| `GET` | `/api/export/{pack_id}/anki` | Export Anki CSV |
 | `POST` | `/api/packs/{pack_id}/exam/start` | Start an exam attempt |
 | `POST` | `/api/packs/{pack_id}/exam/submit` | Submit exam answers and save wrong answers |
 | `GET` | `/api/exam-attempts` | List exam attempt history |
+| `GET` | `/api/exam-attempts/{attempt_id}` | Get exam attempt detail |
 | `GET` | `/api/wrong-answers` | List saved wrong answers |
+| `GET` | `/api/packs/{pack_id}/wrong-answers` | List wrong answers for one pack |
+| `POST` | `/api/wrong-answers/{wrong_answer_id}/review` | Mark a wrong answer reviewed |
 | `POST` | `/api/packs/{pack_id}/study-plan` | Generate or return a study plan |
+| `GET` | `/api/packs/{pack_id}/study-plan` | List generated study plans |
+| `GET` | `/api/packs/{pack_id}/favorites` | List favorites |
+| `POST` | `/api/packs/{pack_id}/favorites` | Save a favorite item |
+| `DELETE` | `/api/favorites/{favorite_id}` | Remove a favorite item |
+| `GET` | `/api/packs/{pack_id}/flashcards/export/anki` | Export flashcards as Anki CSV |
+
+## Deployment Notes
+
+### Frontend on Vercel
+
+- Root directory: `frontend`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Set `VITE_API_BASE` to the deployed backend URL.
+
+### Backend on Render
+
+- Root directory: `backend`
+- Install command: `pip install -r requirements.txt`
+- Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Set `FRONTEND_ORIGIN` to your deployed frontend URL.
 
 ## Verification
 
@@ -218,9 +273,7 @@ cd frontend && npm run build
 
 - Add richer AI-generated study plans
 - Add spaced repetition scheduling for wrong answers
-- Add Anki CSV export
 - Add PDF export for study packs and exam reviews
-- Add local chunking for very large lecture files
 - Add streaming generation progress for AI providers
 - Add search and tags for saved packs
 - Add Docker Compose for one-command startup
