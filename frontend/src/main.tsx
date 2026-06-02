@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom';
-import { BookOpen, FileUp, History, Sparkles, Target, TriangleAlert } from 'lucide-react';
+import { BookOpen, FileUp, History, Settings as SettingsIcon, Sparkles, Target, TriangleAlert } from 'lucide-react';
 import Home from './pages/Home';
 import Result from './pages/Result';
 import HistoryPage from './pages/History';
@@ -10,6 +10,7 @@ import ApiStatus from './components/ApiStatus';
 import Exam from './pages/Exam';
 import ExamHistory from './pages/ExamHistory';
 import WrongAnswers from './pages/WrongAnswers';
+import Settings from './pages/Settings';
 import { copy, UiLanguage, uiLanguages } from './i18n';
 import './styles.css';
 
@@ -53,6 +54,10 @@ function App() {
               <TriangleAlert size={18} />
               {t.wrongAnswers}
             </NavLink>
+            <NavLink to="/settings">
+              <SettingsIcon size={18} />
+              {t.settingsPage}
+            </NavLink>
           </nav>
           <label className="language-picker">
             <span>{t.language}</span>
@@ -75,6 +80,7 @@ function App() {
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/exam-history" element={<ExamHistory />} />
             <Route path="/wrong-answers" element={<WrongAnswers />} />
+            <Route path="/settings" element={<Settings uiLanguage={uiLanguage} />} />
           </Routes>
         </main>
       </div>

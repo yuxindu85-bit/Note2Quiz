@@ -1,20 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Download, Layers3, Loader2, RefreshCw, Target } from 'lucide-react';
+import { BookmarkPlus, Download, Layers3, Loader2, RefreshCw, Star, Target } from 'lucide-react';
 import {
+  addFavorite,
   createStudyPlan,
+  deleteFavorite,
+  exportAnkiUrl,
+  exportJsonUrl,
   exportUrl,
+  FavoriteItem,
   generatePack,
   getPack,
+  listFavorites,
   QuizOrder,
   StudyLanguage,
   StudyPack,
   StudyPlan,
-  TranslationLanguage
+  TranslationLanguage,
+  reviewFlashcard
 } from '../services/api';
 import { copy, UiLanguage } from '../i18n';
 
-const tabs = ['summary', 'quiz', 'flashcards', 'keyTerms', 'studyPlan', 'originalText'] as const;
+const tabs = ['summary', 'quiz', 'flashcards', 'keyTerms', 'studyPlan', 'favorites', 'originalText', 'export'] as const;
 type Tab = (typeof tabs)[number];
 const languageLabels: Record<string, string> = {
   english: 'English',
@@ -36,6 +43,10 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
   const [planDays, setPlanDays] = useState(3);
   const [studyPlan, setStudyPlan] = useState<StudyPlan | null>(null);
   const [planLoading, setPlanLoading] = useState(false);
+  const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+  const [currentCard, setCurrentCard] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  const [flashcardStats, setFlashcardStats] = useState({ known: 0, review: 0 });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -44,6 +55,9 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
       .then(setPack)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load pack.'))
       .finally(() => setLoading(false));
+    listFavorites(packId)
+      .then((data) => setFavorites(data.favorites))
+      .catch(() => setFavorites([]));
   }, [packId]);
 
   async function handleRegenerate() {
@@ -82,6 +96,29 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
     }
   }
 
+  async function handleFavorite(item: { item_type: string; item_index: number; title: string; content: string; source?: string }) {
+    if (!pack) return;
+    try {
+      const data = await addFavorite(pack.id, item);
+      setFavorites(data.favorites);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save favorite.');
+    }
+  }
+
+  async function handleDeleteFavorite(favoriteId: string) {
+    await deleteFavorite(favoriteId);
+    setFavorites((items) => items.filter((item) => item.id !== favoriteId));
+  }
+
+  async function handleFlashcardReview(status: 'known' | 'review') {
+    if (!pack) return;
+    await reviewFlashcard(pack.id, currentCard, status);
+    setFlashcardStats((stats) => ({ ...stats, [status]: stats[status] + 1 }));
+    setFlipped(false);
+    setCurrentCard((index) => Math.min(pack.flashcards.length - 1, index + 1));
+  }
+
   const content = useMemo(() => {
     if (!pack) return null;
     if (activeTab === 'summary') {
@@ -102,7 +139,25 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
                 ))}
               </ul>
               <p className="answer">{t.answer}: {item.answer}</p>
+              <div className="metadata-row compact">
+                <span>Topic: {item.topic ?? 'General'}</span>
+                <span>Difficulty: {item.difficulty ?? 'medium'}</span>
+              </div>
               {item.explanation && <p className="explanation">{t.explanation}: {item.explanation}</p>}
+              <button
+                className="secondary-button inline-action"
+                type="button"
+                onClick={() => void handleFavorite({
+                  item_type: 'quiz',
+                  item_index: index,
+                  title: item.question,
+                  content: `${t.answer}: ${item.answer}\n${t.explanation}: ${item.explanation ?? ''}`,
+                  source: item.topic ?? 'Quiz'
+                })}
+              >
+                <BookmarkPlus size={16} />
+                Favorite
+              </button>
             </article>
           ))}
         </div>
@@ -113,13 +168,49 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
         return <EmptyPanel message="No flashcards were generated for this pack." />;
       }
       return (
-        <div className="card-grid">
-          {pack.flashcards.map((card, index) => (
-            <article className="item-card" key={`${card.front}-${index}`}>
-              <h3>{card.front}</h3>
-              <p>{card.back}</p>
+        <div className="stack">
+          <div className="practice-panel">
+            <div>
+              <p className="eyebrow">Flashcard practice</p>
+              <h2>{currentCard + 1} / {pack.flashcards.length}</h2>
+              <p className="subtle-line">Known: {flashcardStats.known} · Need review: {flashcardStats.review}</p>
+            </div>
+            <article className="flashcard-practice" onClick={() => setFlipped((value) => !value)}>
+              <span>{pack.flashcards[currentCard]?.topic ?? 'General'}</span>
+              <h3>{flipped ? pack.flashcards[currentCard]?.back : pack.flashcards[currentCard]?.front}</h3>
+              <p>{flipped ? 'Back' : 'Front'} · click to flip</p>
             </article>
-          ))}
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={() => void handleFlashcardReview('review')}>
+                Need review
+              </button>
+              <button className="primary-button" type="button" onClick={() => void handleFlashcardReview('known')}>
+                I know this
+              </button>
+            </div>
+          </div>
+          <div className="card-grid">
+            {pack.flashcards.map((card, index) => (
+              <article className="item-card" key={`${card.front}-${index}`}>
+                <h3>{card.front}</h3>
+                <p>{card.back}</p>
+                <button
+                  className="secondary-button inline-action"
+                  type="button"
+                  onClick={() => void handleFavorite({
+                    item_type: 'flashcard',
+                    item_index: index,
+                    title: card.front,
+                    content: card.back,
+                    source: card.topic ?? 'Flashcard'
+                  })}
+                >
+                  <BookmarkPlus size={16} />
+                  Favorite
+                </button>
+              </article>
+            ))}
+          </div>
         </div>
       );
     }
@@ -133,6 +224,21 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
             <article className="term-row" key={`${term.term}-${index}`}>
               <strong>{term.term}</strong>
               <span>{term.definition}</span>
+              <small>Importance: {term.importance ?? 'medium'}</small>
+              <button
+                className="secondary-button inline-action"
+                type="button"
+                onClick={() => void handleFavorite({
+                  item_type: 'key_term',
+                  item_index: index,
+                  title: term.term,
+                  content: term.definition,
+                  source: term.importance ?? 'Key term'
+                })}
+              >
+                <BookmarkPlus size={16} />
+                Favorite
+              </button>
             </article>
           ))}
         </div>
@@ -143,7 +249,7 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
         <div className="stack">
           <div className="plan-toolbar">
             <div className="segmented">
-              {[3, 5, 7].map((days) => (
+              {[1, 3, 5, 7].map((days) => (
                 <button
                   className={planDays === days ? 'active' : ''}
                   key={days}
@@ -159,9 +265,7 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
               Generate plan
             </button>
           </div>
-          {!studyPlan && (
-            <EmptyPanel message="Choose a 3-day, 5-day, or 7-day plan to generate a study schedule." />
-          )}
+          {!studyPlan && <EmptyPanel message="Choose a 1-day, 3-day, 5-day, or 7-day plan to generate a study schedule." />}
           {studyPlan?.plan.map((day) => (
             <article className="item-card" key={day.day}>
               <h3>Day {day.day}: {day.focus}</h3>
@@ -173,6 +277,51 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
               <p className="answer">Goal: {day.goal}</p>
             </article>
           ))}
+        </div>
+      );
+    }
+    if (activeTab === 'favorites') {
+      if (favorites.length === 0) {
+        return <EmptyPanel message="Favorite quiz explanations, flashcards, and key terms to build a focused review box." />;
+      }
+      return (
+        <div className="stack">
+          {favorites.map((item) => (
+            <article className="item-card" key={item.id}>
+              <div className="group-heading">
+                <div>
+                  <span className="mini-label">{item.item_type}</span>
+                  <h3>{item.title}</h3>
+                </div>
+                <button className="secondary-button" type="button" onClick={() => void handleDeleteFavorite(item.id)}>
+                  Remove
+                </button>
+              </div>
+              <p>{item.content}</p>
+              {item.source && <p className="answer">Source: {item.source}</p>}
+            </article>
+          ))}
+        </div>
+      );
+    }
+    if (activeTab === 'export') {
+      return (
+        <div className="card-grid">
+          <a className="item-card export-card" href={exportUrl(pack.id)}>
+            <Download size={20} />
+            <h3>Markdown</h3>
+            <p>Summary, quiz answers, explanations, flashcards, key terms, and generated plans.</p>
+          </a>
+          <a className="item-card export-card" href={exportJsonUrl(pack.id)}>
+            <Download size={20} />
+            <h3>JSON</h3>
+            <p>Raw structured study pack data for developers and integrations.</p>
+          </a>
+          <a className="item-card export-card" href={exportAnkiUrl(pack.id)}>
+            <Download size={20} />
+            <h3>Anki CSV</h3>
+            <p>Flashcards exported as Front, Back, and Topic columns.</p>
+          </a>
         </div>
       );
     }
@@ -190,7 +339,7 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
         )}
       </div>
     );
-  }, [activeTab, pack, planDays, planLoading, studyPlan, t]);
+  }, [activeTab, pack, planDays, planLoading, studyPlan, t, favorites, currentCard, flipped, flashcardStats]);
 
   if (loading) {
     return (
@@ -227,6 +376,7 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
             <span>{pack.quiz_order === 'random' ? t.random : t.ranked}</span>
             <span>{t.analysis}: {languageLabels[pack.language] ?? pack.language}</span>
             <span>{t.translation}: {languageLabels[pack.translation_language] ?? pack.translation_language}</span>
+            <span><Star size={14} /> {favorites.length} Favorites</span>
           </div>
         </div>
         <div className="result-actions">

@@ -5,16 +5,20 @@ export type QuizItem = {
   choices: string[];
   answer: string;
   explanation?: string;
+  topic?: string;
+  difficulty?: string;
 };
 
 export type Flashcard = {
   front: string;
   back: string;
+  topic?: string;
 };
 
 export type KeyTerm = {
   term: string;
   definition: string;
+  importance?: string;
 };
 
 export type StudyPack = {
@@ -78,6 +82,8 @@ export type ExamReviewItem = {
   correct_answer: string;
   is_correct: boolean;
   explanation: string;
+  topic?: string;
+  difficulty?: string;
 };
 
 export type ExamResult = {
@@ -85,6 +91,7 @@ export type ExamResult = {
   pack_id: string;
   score: number;
   total_questions: number;
+  percentage: number;
   review: ExamReviewItem[];
 };
 
@@ -94,6 +101,7 @@ export type ExamAttempt = {
   title: string;
   score: number;
   total_questions: number;
+  percentage: number;
   duration_seconds: number | null;
   status: string;
   created_at: string;
@@ -109,6 +117,9 @@ export type WrongAnswer = {
   user_answer: string;
   correct_answer: string;
   explanation: string;
+  weak_topic: string;
+  reviewed: boolean;
+  review_count: number;
   created_at: string;
 };
 
@@ -124,6 +135,17 @@ export type StudyPlan = {
   pack_id: string;
   duration_days: number;
   plan: StudyPlanDay[];
+  created_at: string;
+};
+
+export type FavoriteItem = {
+  id: string;
+  pack_id: string;
+  item_type: string;
+  item_index: number;
+  title: string;
+  content: string;
+  source: string;
   created_at: string;
 };
 
@@ -188,6 +210,10 @@ export async function listWrongAnswers(): Promise<{ wrong_answers: WrongAnswer[]
   return parseResponse(await fetch(`${API_BASE}/api/wrong-answers`));
 }
 
+export async function markWrongAnswerReviewed(wrongAnswerId: string): Promise<{ status: string }> {
+  return parseResponse(await fetch(`${API_BASE}/api/wrong-answers/${wrongAnswerId}/review`, { method: 'POST' }));
+}
+
 export async function createStudyPlan(packId: string, durationDays: number): Promise<StudyPlan> {
   return parseResponse(
     await fetch(`${API_BASE}/api/packs/${packId}/study-plan`, {
@@ -202,10 +228,53 @@ export async function getPack(packId: string): Promise<StudyPack> {
   return parseResponse(await fetch(`${API_BASE}/api/packs/${packId}`));
 }
 
+export async function listFavorites(packId: string): Promise<{ favorites: FavoriteItem[] }> {
+  return parseResponse(await fetch(`${API_BASE}/api/packs/${packId}/favorites`));
+}
+
+export async function addFavorite(
+  packId: string,
+  favorite: { item_type: string; item_index: number; title: string; content: string; source?: string }
+): Promise<{ favorites: FavoriteItem[] }> {
+  return parseResponse(
+    await fetch(`${API_BASE}/api/packs/${packId}/favorites`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(favorite)
+    })
+  );
+}
+
+export async function deleteFavorite(favoriteId: string): Promise<{ status: string }> {
+  return parseResponse(await fetch(`${API_BASE}/api/favorites/${favoriteId}`, { method: 'DELETE' }));
+}
+
+export async function reviewFlashcard(
+  packId: string,
+  cardIndex: number,
+  status: 'known' | 'review'
+): Promise<{ status: string }> {
+  return parseResponse(
+    await fetch(`${API_BASE}/api/packs/${packId}/flashcards/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ card_index: cardIndex, status })
+    })
+  );
+}
+
 export async function listPacks(): Promise<{ packs: PackListItem[] }> {
   return parseResponse(await fetch(`${API_BASE}/api/packs`));
 }
 
 export function exportUrl(packId: string): string {
-  return `${API_BASE}/api/export/${packId}`;
+  return `${API_BASE}/api/export/${packId}/markdown`;
+}
+
+export function exportJsonUrl(packId: string): string {
+  return `${API_BASE}/api/export/${packId}/json`;
+}
+
+export function exportAnkiUrl(packId: string): string {
+  return `${API_BASE}/api/export/${packId}/anki`;
 }

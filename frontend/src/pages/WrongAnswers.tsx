@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, TriangleAlert } from 'lucide-react';
-import { listWrongAnswers, WrongAnswer } from '../services/api';
+import { listWrongAnswers, markWrongAnswerReviewed, WrongAnswer } from '../services/api';
 
 export default function WrongAnswers() {
   const [wrongAnswers, setWrongAnswers] = useState<WrongAnswer[]>([]);
@@ -23,6 +23,21 @@ export default function WrongAnswers() {
     }, {});
   }, [wrongAnswers]);
 
+  const weakTopics = useMemo(() => {
+    return wrongAnswers.reduce<Record<string, number>>((topics, item) => {
+      const key = item.weak_topic || 'General';
+      topics[key] = (topics[key] ?? 0) + 1;
+      return topics;
+    }, {});
+  }, [wrongAnswers]);
+
+  async function handleReviewed(id: string) {
+    await markWrongAnswerReviewed(id);
+    setWrongAnswers((items) =>
+      items.map((item) => (item.id === id ? { ...item, reviewed: true, review_count: item.review_count + 1 } : item))
+    );
+  }
+
   if (loading) {
     return (
       <div className="center-state">
@@ -40,6 +55,13 @@ export default function WrongAnswers() {
         <p>Practice missed questions grouped by study pack.</p>
       </div>
       {error && <p className="error">{error}</p>}
+      {wrongAnswers.length > 0 && (
+        <div className="metadata-row">
+          {Object.entries(weakTopics).map(([topic, count]) => (
+            <span key={topic}>{topic}: {count}</span>
+          ))}
+        </div>
+      )}
       {!error && wrongAnswers.length === 0 && (
         <div className="empty-state">
           <TriangleAlert size={34} />
@@ -62,6 +84,14 @@ export default function WrongAnswers() {
                 <p>Your answer: {item.user_answer}</p>
                 <p>Correct answer: {item.correct_answer}</p>
                 <p>{item.explanation}</p>
+                <div className="metadata-row compact">
+                  <span>Weak topic: {item.weak_topic}</span>
+                  <span>Reviewed: {item.reviewed ? 'yes' : 'no'}</span>
+                  <span>Review count: {item.review_count}</span>
+                </div>
+                <button className="secondary-button inline-action" type="button" onClick={() => void handleReviewed(item.id)}>
+                  Mark as reviewed
+                </button>
               </article>
             ))}
           </section>

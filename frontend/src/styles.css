@@ -487,11 +487,18 @@ main {
   margin-top: 14px;
 }
 
+.metadata-row.compact {
+  margin: 10px 0;
+}
+
 .metadata-row span {
+  align-items: center;
   background: #e8f1ef;
   border: 1px solid #cfe0dd;
   border-radius: 999px;
   color: #26595c;
+  display: inline-flex;
+  gap: 5px;
   font-size: 0.86rem;
   font-weight: 800;
   padding: 7px 11px;
@@ -659,6 +666,51 @@ main {
   line-height: 1.65;
   margin: 12px 0 0;
   padding: 10px 12px;
+}
+
+.inline-action {
+  margin-top: 12px;
+  min-height: 38px;
+  padding: 8px 12px;
+  width: fit-content;
+}
+
+.practice-panel {
+  background: #f8fafc;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.flashcard-practice {
+  background: #ffffff;
+  border: 1px solid #d8e1ea;
+  border-radius: 8px;
+  cursor: pointer;
+  min-height: 190px;
+  padding: 20px;
+}
+
+.flashcard-practice span,
+.mini-label {
+  color: #2f6f73;
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.flashcard-practice h3 {
+  color: #102033;
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
+
+.export-card {
+  display: grid;
+  gap: 8px;
 }
 
 .term-row {
