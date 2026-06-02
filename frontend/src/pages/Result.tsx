@@ -31,6 +31,7 @@ const languageLabels: Record<string, string> = {
   spanish: 'Español',
   none: 'No translation'
 };
+type FlashcardStatus = 'known' | 'review';
 
 export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLanguage }) {
   const t = copy[uiLanguage];
@@ -46,7 +47,8 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
   const [currentCard, setCurrentCard] = useState(0);
   const [flipped, setFlipped] = useState(false);
-  const [flashcardStats, setFlashcardStats] = useState({ known: 0, review: 0 });
+  const [flashcardProgress, setFlashcardProgress] = useState<Record<number, FlashcardStatus>>({});
+  const [reviewOnly, setReviewOnly] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -58,6 +60,14 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
     listFavorites(packId)
       .then((data) => setFavorites(data.favorites))
       .catch(() => setFavorites([]));
+    try {
+      const saved = window.localStorage.getItem(`note2quiz-flashcards-${packId}`);
+      setFlashcardProgress(saved ? JSON.parse(saved) : {});
+    } catch {
+      setFlashcardProgress({});
+    }
+    setCurrentCard(0);
+    setFlipped(false);
   }, [packId]);
 
   async function handleRegenerate() {
@@ -113,11 +123,36 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
 
   async function handleFlashcardReview(status: 'known' | 'review') {
     if (!pack) return;
-    await reviewFlashcard(pack.id, currentCard, status);
-    setFlashcardStats((stats) => ({ ...stats, [status]: stats[status] + 1 }));
+    const targetIndex = visibleCardIndexes[Math.min(currentCard, Math.max(visibleCardIndexes.length - 1, 0))] ?? 0;
+    await reviewFlashcard(pack.id, targetIndex, status);
+    const nextProgress = { ...flashcardProgress, [targetIndex]: status };
+    setFlashcardProgress(nextProgress);
+    window.localStorage.setItem(`note2quiz-flashcards-${pack.id}`, JSON.stringify(nextProgress));
     setFlipped(false);
-    setCurrentCard((index) => Math.min(pack.flashcards.length - 1, index + 1));
+    setCurrentCard((index) => Math.min(Math.max(visibleCardIndexes.length - 1, 0), index + 1));
   }
+
+  const visibleCardIndexes = useMemo(() => {
+    if (!pack) return [];
+    const indexes = pack.flashcards.map((_, index) => index);
+    return reviewOnly ? indexes.filter((index) => flashcardProgress[index] === 'review') : indexes;
+  }, [flashcardProgress, pack, reviewOnly]);
+
+  const flashcardMetrics = useMemo(() => {
+    const total = pack?.flashcards.length ?? 0;
+    const statuses = Object.values(flashcardProgress);
+    const reviewed = Math.min(statuses.length, total);
+    const known = statuses.filter((status) => status === 'known').length;
+    const review = statuses.filter((status) => status === 'review').length;
+    return {
+      total,
+      reviewed,
+      known,
+      review,
+      unseen: Math.max(total - reviewed, 0),
+      percentage: total ? Math.round((reviewed / total) * 100) : 0
+    };
+  }, [flashcardProgress, pack]);
 
   const content = useMemo(() => {
     if (!pack) return null;
@@ -172,19 +207,64 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
           <div className="practice-panel">
             <div>
               <p className="eyebrow">Flashcard practice</p>
-              <h2>{currentCard + 1} / {pack.flashcards.length}</h2>
-              <p className="subtle-line">Known: {flashcardStats.known} · Need review: {flashcardStats.review}</p>
+              <h2>{flashcardMetrics.reviewed} / {flashcardMetrics.total} reviewed</h2>
+              <p className="subtle-line">
+                Known: {flashcardMetrics.known} · Need review: {flashcardMetrics.review} · Unseen: {flashcardMetrics.unseen}
+              </p>
+              <div className="progress-track labeled" aria-label="Flashcard progress">
+                <div style={{ width: `${flashcardMetrics.percentage}%` }} />
+              </div>
+              <div className="progress-labels">
+                <span>{flashcardMetrics.percentage}% complete</span>
+                <span>{reviewOnly ? 'Need review queue' : 'All cards queue'}</span>
+              </div>
             </div>
-            <article className="flashcard-practice" onClick={() => setFlipped((value) => !value)}>
-              <span>{pack.flashcards[currentCard]?.topic ?? 'General'}</span>
-              <h3>{flipped ? pack.flashcards[currentCard]?.back : pack.flashcards[currentCard]?.front}</h3>
-              <p>{flipped ? 'Back' : 'Front'} · click to flip</p>
-            </article>
+            {visibleCardIndexes.length > 0 ? (
+              <article className="flashcard-practice" onClick={() => setFlipped((value) => !value)}>
+                <span>{pack.flashcards[visibleCardIndexes[currentCard] ?? 0]?.topic ?? 'General'}</span>
+                <h3>
+                  {flipped
+                    ? pack.flashcards[visibleCardIndexes[currentCard] ?? 0]?.back
+                    : pack.flashcards[visibleCardIndexes[currentCard] ?? 0]?.front}
+                </h3>
+                <p>
+                  Card {Math.min(currentCard + 1, visibleCardIndexes.length)} of {visibleCardIndexes.length} ·{' '}
+                  {flipped ? 'Back' : 'Front'} · click to flip
+                </p>
+              </article>
+            ) : (
+              <div className="empty-state compact">
+                <Layers3 size={28} />
+                <h2>No review cards</h2>
+                <p>Mark some cards as Need review, then switch back to this queue.</p>
+              </div>
+            )}
             <div className="button-row">
-              <button className="secondary-button" type="button" onClick={() => void handleFlashcardReview('review')}>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setReviewOnly((value) => !value);
+                  setCurrentCard(0);
+                  setFlipped(false);
+                }}
+              >
+                {reviewOnly ? 'Practice all cards' : 'Practice Need review'}
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={visibleCardIndexes.length === 0}
+                onClick={() => void handleFlashcardReview('review')}
+              >
                 Need review
               </button>
-              <button className="primary-button" type="button" onClick={() => void handleFlashcardReview('known')}>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={visibleCardIndexes.length === 0}
+                onClick={() => void handleFlashcardReview('known')}
+              >
                 I know this
               </button>
             </div>
@@ -194,6 +274,10 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
               <article className="item-card" key={`${card.front}-${index}`}>
                 <h3>{card.front}</h3>
                 <p>{card.back}</p>
+                <div className="metadata-row compact">
+                  <span>{card.topic ?? 'General'}</span>
+                  <span>Status: {flashcardProgress[index] ?? 'unseen'}</span>
+                </div>
                 <button
                   className="secondary-button inline-action"
                   type="button"
@@ -339,7 +423,21 @@ export default function Result({ uiLanguage = 'english' }: { uiLanguage?: UiLang
         )}
       </div>
     );
-  }, [activeTab, pack, planDays, planLoading, studyPlan, t, favorites, currentCard, flipped, flashcardStats]);
+  }, [
+    activeTab,
+    pack,
+    planDays,
+    planLoading,
+    studyPlan,
+    t,
+    favorites,
+    currentCard,
+    flipped,
+    flashcardProgress,
+    flashcardMetrics,
+    reviewOnly,
+    visibleCardIndexes
+  ]);
 
   if (loading) {
     return (

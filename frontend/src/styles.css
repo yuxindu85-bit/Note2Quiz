@@ -615,10 +615,25 @@ main {
   overflow: hidden;
 }
 
+.progress-track.labeled {
+  margin-top: 12px;
+}
+
 .progress-track div {
   background: #246b6f;
   height: 100%;
   transition: width 160ms ease;
+}
+
+.progress-labels {
+  color: #526173;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  font-weight: 750;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 8px;
 }
 
 .choice-list {
@@ -680,7 +695,7 @@ main {
   border: 1px solid #e1e7ef;
   border-radius: 8px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
   padding: 18px;
 }
 
@@ -706,6 +721,12 @@ main {
   color: #102033;
   font-size: 1.25rem;
   line-height: 1.5;
+}
+
+.flashcard-practice p {
+  color: #667789;
+  font-weight: 750;
+  margin-bottom: 0;
 }
 
 .export-card {

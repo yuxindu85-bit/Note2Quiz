@@ -494,22 +494,13 @@ def create_study_plan(pack_id: str, payload: StudyPlanRequest) -> StudyPlanRespo
         row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Study pack not found.")
-        existing = conn.execute(
-            "SELECT * FROM study_plans WHERE pack_id = ? AND duration_days = ?",
-            (pack_id, payload.duration_days),
-        ).fetchone()
-        if existing is not None:
-            return StudyPlanResponse(
-                id=existing["id"],
-                pack_id=existing["pack_id"],
-                duration_days=existing["duration_days"],
-                plan=json.loads(existing["plan_json"]),
-                created_at=existing["created_at"],
-            )
-
         pack = row_to_pack(row)
         plan = mock_study_plan(pack, payload.duration_days)
         plan_id = str(uuid.uuid4())
+        conn.execute(
+            "DELETE FROM study_plans WHERE pack_id = ? AND duration_days = ?",
+            (pack_id, payload.duration_days),
+        )
         conn.execute(
             """
             INSERT INTO study_plans (id, pack_id, duration_days, plan_type, plan_json)

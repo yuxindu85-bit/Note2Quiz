@@ -193,10 +193,17 @@ def test_exam_wrong_answers_and_study_plan(tmp_path: Path, monkeypatch) -> None:
     plan = plan_response.json()
     assert plan["duration_days"] == 1
     assert len(plan["plan"]) == 1
+    assert "cram" in plan["plan"][0]["focus"].lower()
 
     plans_response = client.get(f"/api/packs/{pack['id']}/study-plan")
     assert plans_response.status_code == 200
     assert plans_response.json()["plans"]
+
+    five_day_response = client.post(f"/api/packs/{pack['id']}/study-plan", json={"duration_days": 5})
+    assert five_day_response.status_code == 200
+    five_day_plan = five_day_response.json()["plan"]
+    task_sets = {tuple(day["tasks"]) for day in five_day_plan}
+    assert len(task_sets) > 1
 
 
 def test_health_check_reports_demo_mode(tmp_path: Path, monkeypatch) -> None:
