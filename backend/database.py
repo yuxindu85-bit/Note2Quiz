@@ -42,6 +42,7 @@ def init_db() -> None:
                 original_filename TEXT NOT NULL,
                 stored_path TEXT NOT NULL,
                 extracted_text TEXT NOT NULL,
+                file_hash TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
@@ -64,6 +65,7 @@ def init_db() -> None:
                 key_terms_count INTEGER NOT NULL DEFAULT 10,
                 quiz_order TEXT NOT NULL DEFAULT 'ranked',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(file_id) REFERENCES uploaded_files(id)
             )
             """
@@ -98,6 +100,8 @@ def init_db() -> None:
         _add_column_if_missing(conn, "study_packs", "quiz_count", "INTEGER NOT NULL DEFAULT 10")
         _add_column_if_missing(conn, "study_packs", "key_terms_count", "INTEGER NOT NULL DEFAULT 10")
         _add_column_if_missing(conn, "study_packs", "quiz_order", "TEXT NOT NULL DEFAULT 'ranked'")
+        _add_column_if_missing(conn, "study_packs", "updated_at", "TEXT NOT NULL DEFAULT ''")
+        _add_column_if_missing(conn, "uploaded_files", "file_hash", "TEXT NOT NULL DEFAULT ''")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS exam_attempts (
@@ -105,6 +109,7 @@ def init_db() -> None:
                 pack_id TEXT NOT NULL,
                 score INTEGER NOT NULL DEFAULT 0,
                 total_questions INTEGER NOT NULL DEFAULT 0,
+                percentage REAL NOT NULL DEFAULT 0,
                 duration_seconds INTEGER,
                 answers_json TEXT NOT NULL DEFAULT '[]',
                 review_json TEXT NOT NULL DEFAULT '[]',
@@ -112,6 +117,24 @@ def init_db() -> None:
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 completed_at TEXT,
                 FOREIGN KEY(pack_id) REFERENCES study_packs(id) ON DELETE CASCADE
+            )
+            """
+        )
+        _add_column_if_missing(conn, "exam_attempts", "percentage", "REAL NOT NULL DEFAULT 0")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS exam_answers (
+                id TEXT PRIMARY KEY,
+                attempt_id TEXT NOT NULL,
+                question_index INTEGER NOT NULL,
+                question TEXT NOT NULL,
+                user_answer TEXT NOT NULL,
+                correct_answer TEXT NOT NULL,
+                is_correct INTEGER NOT NULL DEFAULT 0,
+                explanation TEXT NOT NULL DEFAULT '',
+                topic TEXT NOT NULL DEFAULT 'General',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(attempt_id) REFERENCES exam_attempts(id) ON DELETE CASCADE
             )
             """
         )
@@ -125,22 +148,60 @@ def init_db() -> None:
                 user_answer TEXT NOT NULL,
                 correct_answer TEXT NOT NULL,
                 explanation TEXT NOT NULL,
+                weak_topic TEXT NOT NULL DEFAULT 'General',
+                reviewed INTEGER NOT NULL DEFAULT 0,
+                review_count INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(attempt_id) REFERENCES exam_attempts(id) ON DELETE CASCADE,
                 FOREIGN KEY(pack_id) REFERENCES study_packs(id) ON DELETE CASCADE
             )
             """
         )
+        _add_column_if_missing(conn, "wrong_answers", "weak_topic", "TEXT NOT NULL DEFAULT 'General'")
+        _add_column_if_missing(conn, "wrong_answers", "reviewed", "INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(conn, "wrong_answers", "review_count", "INTEGER NOT NULL DEFAULT 0")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS study_plans (
                 id TEXT PRIMARY KEY,
                 pack_id TEXT NOT NULL,
                 duration_days INTEGER NOT NULL,
+                plan_type TEXT NOT NULL DEFAULT 'custom',
                 plan_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(pack_id) REFERENCES study_packs(id) ON DELETE CASCADE,
                 UNIQUE(pack_id, duration_days)
+            )
+            """
+        )
+        _add_column_if_missing(conn, "study_plans", "plan_type", "TEXT NOT NULL DEFAULT 'custom'")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS favorite_items (
+                id TEXT PRIMARY KEY,
+                pack_id TEXT NOT NULL,
+                item_type TEXT NOT NULL,
+                item_index INTEGER NOT NULL DEFAULT 0,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(pack_id) REFERENCES study_packs(id) ON DELETE CASCADE,
+                UNIQUE(pack_id, item_type, item_index, title)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS flashcard_reviews (
+                id TEXT PRIMARY KEY,
+                pack_id TEXT NOT NULL,
+                card_index INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                review_count INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(pack_id) REFERENCES study_packs(id) ON DELETE CASCADE,
+                UNIQUE(pack_id, card_index)
             )
             """
         )
@@ -180,4 +241,5 @@ def row_to_pack(row: sqlite3.Row) -> dict[str, Any]:
         "key_terms_count": row["key_terms_count"],
         "quiz_order": row["quiz_order"],
         "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
     }

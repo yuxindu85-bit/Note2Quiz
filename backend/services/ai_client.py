@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from services.text_chunker import prepare_generation_text
+
 
 MAX_PROMPT_CHARS = 24000
 LANGUAGE_LABELS = {
@@ -50,9 +52,10 @@ async def generate_study_pack(
 
     base_url = os.getenv("AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
     model = os.getenv("AI_MODEL", "gpt-4o-mini")
+    generation_text = prepare_generation_text(text, max_chars=MAX_PROMPT_CHARS)
     prompt = _build_prompt(
         title,
-        text[:MAX_PROMPT_CHARS],
+        generation_text,
         key_terms_count,
         quiz_count,
         quiz_order,
@@ -119,10 +122,11 @@ Create a study pack for this lecture file: {title}
 
 Return JSON with exactly these keys:
 - title: string
-- summary: concise but useful study summary in {language_label}
+- summary: object with short, detailed, and bullet_points array in {language_label}
 - quiz: array of exactly {quiz_count} objects with question, choices array of 4 strings, answer string, explanation string
-- flashcards: array of 20 objects with front and back
-- key_terms: array of exactly {key_terms_count} objects with term and short definition, ordered by importance
+- quiz items must also include topic and difficulty ("easy", "medium", or "hard")
+- flashcards: array of 20 objects with front, back, and topic
+- key_terms: array of exactly {key_terms_count} objects with term, short definition, and importance ("high", "medium", or "low"), ordered by importance
 - translation_text: {"translated version of the lecture text in " + translation_label if include_translation else "empty string"}
 
 Rules:
@@ -158,10 +162,10 @@ def normalize_pack(
     )
     return {
         "title": str(data.get("title") or fallback_title),
-        "summary": str(data.get("summary") or "No summary was generated."),
-        "quiz": _with_fallback(_list_of_dicts(data.get("quiz"), quiz_count), fallback["quiz"], quiz_count),
-        "flashcards": _with_fallback(_list_of_dicts(data.get("flashcards"), 20), fallback["flashcards"], 20),
-        "key_terms": _with_fallback(_list_of_dicts(data.get("key_terms"), key_terms_count), fallback["key_terms"], key_terms_count),
+        "summary": _summary_to_text(data.get("summary"), fallback["summary"]),
+        "quiz": _normalize_quiz(_with_fallback(_list_of_dicts(data.get("quiz"), quiz_count), fallback["quiz"], quiz_count)),
+        "flashcards": _normalize_flashcards(_with_fallback(_list_of_dicts(data.get("flashcards"), 20), fallback["flashcards"], 20)),
+        "key_terms": _normalize_key_terms(_with_fallback(_list_of_dicts(data.get("key_terms"), key_terms_count), fallback["key_terms"], key_terms_count)),
         "original_text": original_text,
         "translation_text": str(data.get("translation_text") or fallback["translation_text"]) if include_translation else "",
         "language": language,
@@ -202,6 +206,60 @@ def _with_fallback(
     return merged[:expected]
 
 
+def _summary_to_text(value: Any, fallback: str) -> str:
+    if isinstance(value, dict):
+        short = str(value.get("short") or "").strip()
+        detailed = str(value.get("detailed") or "").strip()
+        bullets = value.get("bullet_points")
+        bullet_text = ""
+        if isinstance(bullets, list):
+            bullet_text = "\n".join(f"- {item}" for item in bullets if item)
+        return "\n\n".join(part for part in [short, detailed, bullet_text] if part) or fallback
+    if value:
+        return str(value)
+    return fallback
+
+
+def _normalize_quiz(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for item in items:
+        choices = item.get("choices") if isinstance(item.get("choices"), list) else []
+        answer = str(item.get("answer") or (choices[0] if choices else ""))
+        normalized.append(
+            {
+                "question": str(item.get("question") or "Review this source-backed idea."),
+                "choices": [str(choice) for choice in choices[:4]],
+                "answer": answer,
+                "explanation": str(item.get("explanation") or f"The correct answer is supported by the study material: {answer}"),
+                "topic": str(item.get("topic") or "General"),
+                "difficulty": str(item.get("difficulty") or "medium"),
+            }
+        )
+    return normalized
+
+
+def _normalize_flashcards(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "front": str(item.get("front") or ""),
+            "back": str(item.get("back") or ""),
+            "topic": str(item.get("topic") or "General"),
+        }
+        for item in items
+    ]
+
+
+def _normalize_key_terms(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "term": str(item.get("term") or ""),
+            "definition": str(item.get("definition") or ""),
+            "importance": str(item.get("importance") or "medium"),
+        }
+        for item in items
+    ]
+
+
 def mock_study_pack(
     title: str,
     text: str,
@@ -223,8 +281,9 @@ def mock_study_pack(
         {
             "term": candidate.title(),
             "definition": _definition_for_term(candidate, sentences, title),
+            "importance": "high" if index < 5 else "medium",
         }
-        for candidate in primary_terms[:key_terms_count]
+        for index, candidate in enumerate(primary_terms[:key_terms_count])
     ]
     language_label = LANGUAGE_LABELS.get(language, "English")
 
@@ -345,6 +404,8 @@ def _mock_quiz(
                 "choices": choices[:4],
                 "answer": answer,
                 "explanation": f"This answer is correct because the uploaded notes explicitly support this point: {answer}",
+                "topic": term,
+                "difficulty": "easy" if index < max(1, quiz_count // 3) else "medium" if index < max(2, quiz_count * 2 // 3) else "hard",
             }
         )
     if quiz_order == "random":
@@ -370,6 +431,7 @@ def _mock_flashcards(sentences: list[str], keywords: list[str]) -> list[dict[str
             {
                 "front": prompt,
                 "back": _flashcard_answer(term, sentence),
+                "topic": term,
             }
         )
     return cards

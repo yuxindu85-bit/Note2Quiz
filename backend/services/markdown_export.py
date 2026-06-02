@@ -35,7 +35,17 @@ def pack_to_markdown(pack: dict[str, Any]) -> str:
 
     lines.extend(["## Key Terms", ""])
     for item in pack["key_terms"]:
-        lines.append(f"- **{item.get('term', '')}**: {item.get('definition', '')}")
+        importance = item.get("importance")
+        suffix = f" ({importance})" if importance else ""
+        lines.append(f"- **{item.get('term', '')}**{suffix}: {item.get('definition', '')}")
+
+    study_plans = pack.get("study_plans", [])
+    if study_plans:
+        lines.extend(["", "## Study Plans", ""])
+        for plan in study_plans:
+            lines.append(f"### {plan.get('duration_days', '')}-Day Plan")
+            for day in plan.get("plan", []):
+                lines.append(f"- Day {day.get('day')}: {day.get('focus')} — {day.get('goal')}")
 
     lines.extend(["", "## Original Text", "", pack["original_text"]])
     if pack.get("translation_text"):

@@ -21,16 +21,21 @@ class QuizItem(BaseModel):
     question: str
     choices: list[str] = Field(default_factory=list)
     answer: str
+    explanation: str = ""
+    topic: str = "General"
+    difficulty: str = "medium"
 
 
 class Flashcard(BaseModel):
     front: str
     back: str
+    topic: str = "General"
 
 
 class KeyTerm(BaseModel):
     term: str
     definition: str
+    importance: str = "medium"
 
 
 class GenerateOptions(BaseModel):
@@ -95,6 +100,7 @@ class ExamSubmitResponse(BaseModel):
     pack_id: str
     score: int
     total_questions: int
+    percentage: float = 0
     review: list[dict[str, Any]]
 
 
@@ -104,6 +110,7 @@ class ExamAttemptListItem(BaseModel):
     title: str
     score: int
     total_questions: int
+    percentage: float = 0
     duration_seconds: Optional[int] = None
     status: str
     created_at: str
@@ -123,6 +130,9 @@ class WrongAnswerListItem(BaseModel):
     user_answer: str
     correct_answer: str
     explanation: str
+    weak_topic: str = "General"
+    reviewed: bool = False
+    review_count: int = 0
     created_at: str
 
 
@@ -131,7 +141,7 @@ class WrongAnswerListResponse(BaseModel):
 
 
 class StudyPlanRequest(BaseModel):
-    duration_days: int = Field(default=3, ge=3, le=7)
+    duration_days: int = Field(default=3, ge=1, le=7)
 
 
 class StudyPlanResponse(BaseModel):
@@ -140,3 +150,31 @@ class StudyPlanResponse(BaseModel):
     duration_days: int
     plan: list[dict[str, Any]]
     created_at: str
+
+
+class FavoriteItem(BaseModel):
+    id: str
+    pack_id: str
+    item_type: str
+    item_index: int
+    title: str
+    content: str
+    source: str = ""
+    created_at: str
+
+
+class FavoriteCreateRequest(BaseModel):
+    item_type: str
+    item_index: int = 0
+    title: str
+    content: str
+    source: str = ""
+
+
+class FavoriteListResponse(BaseModel):
+    favorites: list[FavoriteItem]
+
+
+class FlashcardReviewRequest(BaseModel):
+    card_index: int = Field(ge=0)
+    status: str = Field(pattern="^(known|review)$")

@@ -2,6 +2,9 @@ import json
 import os
 import shutil
 import uuid
+import hashlib
+import csv
+import io
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -10,7 +13,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from database import get_connection, init_db, row_to_pack
 from schemas import (
@@ -18,8 +21,11 @@ from schemas import (
     ExamStartResponse,
     ExamSubmitRequest,
     ExamSubmitResponse,
+    FavoriteCreateRequest,
+    FavoriteListResponse,
     GenerateOptions,
     HealthResponse,
+    FlashcardReviewRequest,
     StudyPack,
     StudyPackListResponse,
     StudyPlanRequest,
@@ -37,6 +43,8 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 load_dotenv(BASE_DIR.parent / ".env")
 UPLOAD_DIR = Path(os.getenv("NOTE2QUIZ_UPLOAD_DIR", BASE_DIR / "uploads"))
+MAX_UPLOAD_BYTES = int(os.getenv("NOTE2QUIZ_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+MIN_EXTRACTED_CHARS = int(os.getenv("NOTE2QUIZ_MIN_EXTRACTED_CHARS", "40"))
 if not UPLOAD_DIR.is_absolute():
     UPLOAD_DIR = BASE_DIR.parent / UPLOAD_DIR
 
@@ -56,7 +64,11 @@ app = FastAPI(title="Note2Quiz API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        os.getenv("FRONTEND_ORIGIN", "http://localhost:5173"),
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -93,7 +105,12 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         with stored_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        if stored_path.stat().st_size > MAX_UPLOAD_BYTES:
+            raise FileParseError(f"File is too large. Maximum size is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
         extracted_text = extract_text(stored_path)
+        if len(extracted_text.strip()) < MIN_EXTRACTED_CHARS:
+            raise FileParseError("The extracted text is too short. This may be a scanned PDF or image-only file.")
+        file_hash = _file_sha256(stored_path)
     except FileParseError as exc:
         stored_path.unlink(missing_ok=True)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -104,10 +121,10 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
     with get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO uploaded_files (id, original_filename, stored_path, extracted_text)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO uploaded_files (id, original_filename, stored_path, extracted_text, file_hash)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (file_id, safe_name, str(stored_path), extracted_text),
+            (file_id, safe_name, str(stored_path), extracted_text, file_hash),
         )
 
     return UploadResponse(
@@ -116,6 +133,14 @@ async def upload_file(file: UploadFile = File(...)) -> UploadResponse:
         text_length=len(extracted_text),
         preview=extracted_text[:500],
     )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @app.post("/api/generate/{file_id}", response_model=StudyPack)
@@ -247,7 +272,7 @@ def submit_exam(pack_id: str, payload: ExamSubmitRequest) -> ExamSubmitResponse:
         questions = pack["quiz"]
         answers_by_index = {answer.question_index: answer.answer for answer in payload.answers}
         review: list[dict] = []
-        wrong_rows: list[tuple[str, str, str, str, str, str]] = []
+        wrong_rows: list[tuple[str, str, str, str, str, str, str]] = []
 
         for index, question in enumerate(questions):
             correct_answer = str(question.get("answer", ""))
@@ -262,6 +287,8 @@ def submit_exam(pack_id: str, payload: ExamSubmitRequest) -> ExamSubmitResponse:
                 "correct_answer": correct_answer,
                 "is_correct": is_correct,
                 "explanation": explanation,
+                "topic": str(question.get("topic") or "General"),
+                "difficulty": str(question.get("difficulty") or "medium"),
             }
             review.append(review_item)
             if not is_correct:
@@ -274,6 +301,7 @@ def submit_exam(pack_id: str, payload: ExamSubmitRequest) -> ExamSubmitResponse:
                         user_answer or "No answer",
                         correct_answer,
                         explanation,
+                        review_item["topic"],
                     )
                 )
 
@@ -292,26 +320,47 @@ def submit_exam(pack_id: str, payload: ExamSubmitRequest) -> ExamSubmitResponse:
         conn.execute(
             """
             UPDATE exam_attempts
-            SET score = ?, total_questions = ?, duration_seconds = ?, answers_json = ?,
+            SET score = ?, total_questions = ?, percentage = ?, duration_seconds = ?, answers_json = ?,
                 review_json = ?, status = 'completed', completed_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             (
                 score,
                 len(questions),
+                _percentage(score, len(questions)),
                 payload.duration_seconds,
                 json.dumps([answer.model_dump() for answer in payload.answers]),
                 json.dumps(review),
                 attempt_id,
             ),
         )
+        conn.execute("DELETE FROM exam_answers WHERE attempt_id = ?", (attempt_id,))
+        for item in review:
+            conn.execute(
+                """
+                INSERT INTO exam_answers
+                (id, attempt_id, question_index, question, user_answer, correct_answer, is_correct, explanation, topic)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(uuid.uuid4()),
+                    attempt_id,
+                    item["question_index"],
+                    item["question"],
+                    item["user_answer"] or "No answer",
+                    item["correct_answer"],
+                    1 if item["is_correct"] else 0,
+                    item["explanation"],
+                    item["topic"],
+                ),
+            )
         conn.execute("DELETE FROM wrong_answers WHERE attempt_id = ?", (attempt_id,))
         for wrong_row in wrong_rows:
             conn.execute(
                 """
                 INSERT INTO wrong_answers
-                (id, attempt_id, pack_id, question, user_answer, correct_answer, explanation)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (id, attempt_id, pack_id, question, user_answer, correct_answer, explanation, weak_topic)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (wrong_row[0], attempt_id, *wrong_row[2:]),
             )
@@ -321,6 +370,7 @@ def submit_exam(pack_id: str, payload: ExamSubmitRequest) -> ExamSubmitResponse:
         pack_id=pack_id,
         score=score,
         total_questions=len(questions),
+        percentage=_percentage(score, len(questions)),
         review=review,
     )
 
@@ -331,7 +381,7 @@ def list_exam_attempts() -> ExamAttemptListResponse:
         rows = conn.execute(
             """
             SELECT exam_attempts.id, exam_attempts.pack_id, study_packs.title,
-                   exam_attempts.score, exam_attempts.total_questions,
+                   exam_attempts.score, exam_attempts.total_questions, exam_attempts.percentage,
                    exam_attempts.duration_seconds, exam_attempts.status,
                    exam_attempts.created_at, exam_attempts.completed_at
             FROM exam_attempts
@@ -342,6 +392,29 @@ def list_exam_attempts() -> ExamAttemptListResponse:
     return ExamAttemptListResponse(attempts=[dict(row) for row in rows])
 
 
+@app.get("/api/exam-attempts/{attempt_id}")
+def get_exam_attempt(attempt_id: str) -> dict:
+    with get_connection() as conn:
+        attempt = conn.execute(
+            """
+            SELECT exam_attempts.*, study_packs.title
+            FROM exam_attempts
+            JOIN study_packs ON study_packs.id = exam_attempts.pack_id
+            WHERE exam_attempts.id = ?
+            """,
+            (attempt_id,),
+        ).fetchone()
+        if attempt is None:
+            raise HTTPException(status_code=404, detail="Exam attempt not found.")
+        answers = conn.execute(
+            "SELECT * FROM exam_answers WHERE attempt_id = ? ORDER BY question_index ASC",
+            (attempt_id,),
+        ).fetchall()
+    data = dict(attempt)
+    data["answers"] = [dict(row) for row in answers]
+    return data
+
+
 @app.get("/api/wrong-answers", response_model=WrongAnswerListResponse)
 def list_wrong_answers() -> WrongAnswerListResponse:
     with get_connection() as conn:
@@ -350,7 +423,8 @@ def list_wrong_answers() -> WrongAnswerListResponse:
             SELECT wrong_answers.id, wrong_answers.attempt_id, wrong_answers.pack_id,
                    study_packs.title AS pack_title, wrong_answers.question,
                    wrong_answers.user_answer, wrong_answers.correct_answer,
-                   wrong_answers.explanation, wrong_answers.created_at
+                   wrong_answers.explanation, wrong_answers.weak_topic, wrong_answers.reviewed,
+                   wrong_answers.review_count, wrong_answers.created_at
             FROM wrong_answers
             JOIN study_packs ON study_packs.id = wrong_answers.pack_id
             ORDER BY wrong_answers.created_at DESC
@@ -359,10 +433,62 @@ def list_wrong_answers() -> WrongAnswerListResponse:
     return WrongAnswerListResponse(wrong_answers=[dict(row) for row in rows])
 
 
+@app.get("/api/packs/{pack_id}/wrong-answers", response_model=WrongAnswerListResponse)
+def list_pack_wrong_answers(pack_id: str) -> WrongAnswerListResponse:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT wrong_answers.id, wrong_answers.attempt_id, wrong_answers.pack_id,
+                   study_packs.title AS pack_title, wrong_answers.question,
+                   wrong_answers.user_answer, wrong_answers.correct_answer,
+                   wrong_answers.explanation, wrong_answers.weak_topic, wrong_answers.reviewed,
+                   wrong_answers.review_count, wrong_answers.created_at
+            FROM wrong_answers
+            JOIN study_packs ON study_packs.id = wrong_answers.pack_id
+            WHERE wrong_answers.pack_id = ?
+            ORDER BY wrong_answers.created_at DESC
+            """,
+            (pack_id,),
+        ).fetchall()
+    return WrongAnswerListResponse(wrong_answers=[dict(row) for row in rows])
+
+
+@app.post("/api/wrong-answers/{wrong_answer_id}/review")
+def mark_wrong_answer_reviewed(wrong_answer_id: str) -> dict[str, str]:
+    with get_connection() as conn:
+        row = conn.execute("SELECT id FROM wrong_answers WHERE id = ?", (wrong_answer_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Wrong answer not found.")
+        conn.execute(
+            """
+            UPDATE wrong_answers
+            SET reviewed = 1, review_count = review_count + 1
+            WHERE id = ?
+            """,
+            (wrong_answer_id,),
+        )
+    return {"status": "reviewed"}
+
+
+@app.post("/api/wrong-answers/practice")
+def practice_wrong_answers() -> dict[str, list[dict]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT question, correct_answer AS answer, explanation, weak_topic AS topic
+            FROM wrong_answers
+            WHERE reviewed = 0
+            ORDER BY created_at DESC
+            LIMIT 20
+            """
+        ).fetchall()
+    return {"questions": [dict(row) for row in rows]}
+
+
 @app.post("/api/packs/{pack_id}/study-plan", response_model=StudyPlanResponse)
 def create_study_plan(pack_id: str, payload: StudyPlanRequest) -> StudyPlanResponse:
-    if payload.duration_days not in {3, 5, 7}:
-        raise HTTPException(status_code=422, detail="Choose a 3-day, 5-day, or 7-day study plan.")
+    if payload.duration_days not in {1, 3, 5, 7}:
+        raise HTTPException(status_code=422, detail="Choose a 1-day, 3-day, 5-day, or 7-day study plan.")
 
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
@@ -386,10 +512,10 @@ def create_study_plan(pack_id: str, payload: StudyPlanRequest) -> StudyPlanRespo
         plan_id = str(uuid.uuid4())
         conn.execute(
             """
-            INSERT INTO study_plans (id, pack_id, duration_days, plan_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO study_plans (id, pack_id, duration_days, plan_type, plan_json)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (plan_id, pack_id, payload.duration_days, json.dumps(plan)),
+            (plan_id, pack_id, payload.duration_days, f"{payload.duration_days}-day", json.dumps(plan)),
         )
         plan_row = conn.execute("SELECT * FROM study_plans WHERE id = ?", (plan_id,)).fetchone()
 
@@ -402,14 +528,38 @@ def create_study_plan(pack_id: str, payload: StudyPlanRequest) -> StudyPlanRespo
     )
 
 
+@app.get("/api/packs/{pack_id}/study-plan")
+def get_study_plans(pack_id: str) -> dict[str, list[dict]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM study_plans WHERE pack_id = ? ORDER BY duration_days ASC",
+            (pack_id,),
+        ).fetchall()
+    return {"plans": [dict(row) | {"plan": json.loads(row["plan_json"])} for row in rows]}
+
+
 @app.get("/api/export/{pack_id}", response_class=PlainTextResponse)
 def export_pack(pack_id: str) -> PlainTextResponse:
+    return export_pack_markdown(pack_id)
+
+
+@app.get("/api/export/{pack_id}/markdown", response_class=PlainTextResponse)
+def export_pack_markdown(pack_id: str) -> PlainTextResponse:
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+        plan_rows = conn.execute(
+            "SELECT duration_days, plan_json FROM study_plans WHERE pack_id = ? ORDER BY duration_days ASC",
+            (pack_id,),
+        ).fetchall()
     if row is None:
         raise HTTPException(status_code=404, detail="Study pack not found.")
 
-    markdown = pack_to_markdown(row_to_pack(row))
+    pack = row_to_pack(row)
+    pack["study_plans"] = [
+        {"duration_days": plan_row["duration_days"], "plan": json.loads(plan_row["plan_json"])}
+        for plan_row in plan_rows
+    ]
+    markdown = pack_to_markdown(pack)
     filename = safe_markdown_filename(row["title"])
     return PlainTextResponse(
         markdown,
@@ -418,8 +568,98 @@ def export_pack(pack_id: str) -> PlainTextResponse:
     )
 
 
+@app.get("/api/export/{pack_id}/json")
+def export_pack_json(pack_id: str) -> JSONResponse:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Study pack not found.")
+    return JSONResponse(row_to_pack(row))
+
+
+@app.get("/api/export/{pack_id}/anki")
+@app.get("/api/packs/{pack_id}/flashcards/export/anki")
+def export_anki(pack_id: str) -> Response:
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Study pack not found.")
+    pack = row_to_pack(row)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Front", "Back", "Topic"])
+    for card in pack["flashcards"]:
+        writer.writerow([card.get("front", ""), card.get("back", ""), card.get("topic", "General")])
+    filename = safe_markdown_filename(pack["title"]).replace(".md", ".csv")
+    return Response(
+        buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/packs/{pack_id}/favorites", response_model=FavoriteListResponse)
+def list_favorites(pack_id: str) -> FavoriteListResponse:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM favorite_items WHERE pack_id = ? ORDER BY created_at DESC",
+            (pack_id,),
+        ).fetchall()
+    return FavoriteListResponse(favorites=[dict(row) for row in rows])
+
+
+@app.post("/api/packs/{pack_id}/favorites", response_model=FavoriteListResponse)
+def add_favorite(pack_id: str, payload: FavoriteCreateRequest) -> FavoriteListResponse:
+    with get_connection() as conn:
+        pack = conn.execute("SELECT id FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+        if pack is None:
+            raise HTTPException(status_code=404, detail="Study pack not found.")
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO favorite_items
+            (id, pack_id, item_type, item_index, title, content, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (str(uuid.uuid4()), pack_id, payload.item_type, payload.item_index, payload.title, payload.content, payload.source),
+        )
+    return list_favorites(pack_id)
+
+
+@app.delete("/api/favorites/{favorite_id}")
+def delete_favorite(favorite_id: str) -> dict[str, str]:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM favorite_items WHERE id = ?", (favorite_id,))
+    return {"status": "deleted"}
+
+
+@app.post("/api/packs/{pack_id}/flashcards/review")
+def review_flashcard(pack_id: str, payload: FlashcardReviewRequest) -> dict[str, str]:
+    with get_connection() as conn:
+        pack = conn.execute("SELECT id FROM study_packs WHERE id = ?", (pack_id,)).fetchone()
+        if pack is None:
+            raise HTTPException(status_code=404, detail="Study pack not found.")
+        conn.execute(
+            """
+            INSERT INTO flashcard_reviews (id, pack_id, card_index, status)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(pack_id, card_index) DO UPDATE SET
+                status = excluded.status,
+                review_count = flashcard_reviews.review_count + 1,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (str(uuid.uuid4()), pack_id, payload.card_index, payload.status),
+        )
+    return {"status": payload.status}
+
+
 def _question_explanation(question: dict, correct_answer: str) -> str:
     explanation = question.get("explanation")
     if explanation:
         return str(explanation)
     return f"The correct answer is supported by the study pack: {correct_answer}"
+
+
+def _percentage(score: int, total: int) -> float:
+    if total <= 0:
+        return 0
+    return round((score / total) * 100, 2)
