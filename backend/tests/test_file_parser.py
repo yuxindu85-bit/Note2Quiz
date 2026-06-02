@@ -45,7 +45,12 @@ def test_mock_study_pack_uses_source_text_variety() -> None:
     assert len(flashcard_backs) > 1
     assert all(len(item["choices"]) == 4 for item in pack["quiz"])
     assert all(item["answer"] in item["choices"] for item in pack["quiz"])
+    assert all(item["explanation"] for item in pack["quiz"])
+    assert all(item["topic"] for item in pack["quiz"])
+    assert all(item["difficulty"] in {"easy", "medium", "hard"} for item in pack["quiz"])
+    assert all(item["topic"] for item in pack["flashcards"])
     assert any(term["term"] == "Photosynthesis" for term in pack["key_terms"])
+    assert all(term["importance"] in {"high", "medium", "low"} for term in pack["key_terms"])
 
 
 def test_mock_study_pack_honors_generation_options() -> None:
@@ -73,6 +78,8 @@ def test_mock_study_pack_honors_generation_options() -> None:
     assert len(pack["quiz"]) == 7
     assert len(pack["key_terms"]) == 5
     assert pack["quiz"][0]["explanation"]
+    assert pack["quiz"][0]["topic"]
+    assert pack["quiz"][0]["difficulty"] in {"easy", "medium", "hard"}
     assert "Demo mode cannot produce" in pack["translation_text"]
 
 
