@@ -5,6 +5,7 @@ import pytest
 from services.file_parser import FileParseError, extract_text
 from services.ai_client import mock_study_pack
 from services.markdown_export import safe_markdown_filename
+from services.text_chunker import chunk_text, prepare_generation_text
 
 
 def test_extract_txt(tmp_path: Path) -> None:
@@ -73,3 +74,13 @@ def test_mock_study_pack_honors_generation_options() -> None:
     assert len(pack["key_terms"]) == 5
     assert pack["quiz"][0]["explanation"]
     assert "Demo mode cannot produce" in pack["translation_text"]
+
+
+def test_text_chunker_splits_long_documents() -> None:
+    text = " ".join(f"Sentence {index} explains a study idea." for index in range(800))
+    chunks = chunk_text(text, max_chars=1000, overlap=80)
+    prepared = prepare_generation_text(text, max_chars=3000)
+
+    assert len(chunks) > 1
+    assert len(prepared) <= 3000
+    assert "[Chunk" in prepared

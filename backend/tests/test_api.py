@@ -99,6 +99,27 @@ def test_generate_accepts_study_options(tmp_path: Path, monkeypatch) -> None:
     assert "## Translation (Chinese)" in export_response.text
     assert "Explanation:" in export_response.text
 
+    json_export = client.get(f"/api/export/{pack['id']}/json")
+    assert json_export.status_code == 200
+    assert json_export.json()["id"] == pack["id"]
+
+    anki_export = client.get(f"/api/export/{pack['id']}/anki")
+    assert anki_export.status_code == 200
+    assert "Front,Back,Topic" in anki_export.text
+
+    favorite_response = client.post(
+        f"/api/packs/{pack['id']}/favorites",
+        json={
+            "item_type": "key_term",
+            "item_index": 0,
+            "title": pack["key_terms"][0]["term"],
+            "content": pack["key_terms"][0]["definition"],
+            "source": "test",
+        },
+    )
+    assert favorite_response.status_code == 200
+    assert favorite_response.json()["favorites"]
+
 
 def test_exam_wrong_answers_and_study_plan(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("NOTE2QUIZ_DB_PATH", str(tmp_path / "note2quiz.db"))
@@ -146,17 +167,36 @@ def test_exam_wrong_answers_and_study_plan(tmp_path: Path, monkeypatch) -> None:
     assert attempts_response.status_code == 200
     assert attempts_response.json()["attempts"][0]["id"] == exam["attempt_id"]
 
+    attempt_response = client.get(f"/api/exam-attempts/{exam['attempt_id']}")
+    assert attempt_response.status_code == 200
+    assert attempt_response.json()["answers"]
+
     wrong_response = client.get("/api/wrong-answers")
     assert wrong_response.status_code == 200
     wrong_answers = wrong_response.json()["wrong_answers"]
     assert wrong_answers
     assert wrong_answers[0]["user_answer"] == wrong_answer
+    assert wrong_answers[0]["weak_topic"]
 
-    plan_response = client.post(f"/api/packs/{pack['id']}/study-plan", json={"duration_days": 5})
+    review_response = client.post(f"/api/wrong-answers/{wrong_answers[0]['id']}/review")
+    assert review_response.status_code == 200
+
+    pack_wrong_response = client.get(f"/api/packs/{pack['id']}/wrong-answers")
+    assert pack_wrong_response.status_code == 200
+    assert pack_wrong_response.json()["wrong_answers"]
+
+    practice_response = client.post("/api/wrong-answers/practice")
+    assert practice_response.status_code == 200
+
+    plan_response = client.post(f"/api/packs/{pack['id']}/study-plan", json={"duration_days": 1})
     assert plan_response.status_code == 200
     plan = plan_response.json()
-    assert plan["duration_days"] == 5
-    assert len(plan["plan"]) == 5
+    assert plan["duration_days"] == 1
+    assert len(plan["plan"]) == 1
+
+    plans_response = client.get(f"/api/packs/{pack['id']}/study-plan")
+    assert plans_response.status_code == 200
+    assert plans_response.json()["plans"]
 
 
 def test_health_check_reports_demo_mode(tmp_path: Path, monkeypatch) -> None:
